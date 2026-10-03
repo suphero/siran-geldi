@@ -47,7 +47,7 @@ const alternates = (path: string) => [
 const APP: Record<string, Page> = {
   join: { title: "QR Wait", head: `<link rel="manifest" href="/manifest.json">\n<meta name="theme-color" content="#1B2A4A">\n${NOINDEX}` },
   host: { title: "Attendant panel", head: NOINDEX },
-  status: { title: "Queue status", head: NOINDEX },
+  status: { title: "Queue status", head: `<link rel="manifest" href="/manifest.json">\n<meta name="theme-color" content="#1B2A4A">\n${NOINDEX}` }, // ana ekrana buradan da eklenebilir
   admin: { title: "QR Wait · Admin", head: NOINDEX },
 };
 // Tanıtım sitesi: her dil ve sayfa için ayrı HTML. İngilizce kökte (pricing.html → /pricing, ana sayfa home.html → / Worker'da),

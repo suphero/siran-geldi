@@ -3,6 +3,7 @@ import { EMAIL } from "@/components/legal";
 import { H2, pill, Section, Site, solid, USES, type Use } from "@/components/site";
 import { Button } from "@/components/ui/button";
 import { basePath, pick, sitePath } from "@/lib/i18n";
+import { toApp } from "@/lib/app";
 import { mount } from "@/lib/mount";
 import { cn } from "@/lib/utils";
 import "./home.css";
@@ -442,6 +443,8 @@ const T = pick<{
 
 const use = (USES.find(([u]) => `/${u}` === basePath().replace(/\.html$/, ""))?.[0] ?? "restaurant-waitlist") as Use;
 const P = T.pages[use];
+toApp(); // ana ekrana tanıtım sitesinden eklenen uygulama da QR Wait uygulamasının ana ekranını açar (lib/app.ts)
+
 document.title = P.title;
 
 function UseCasePage() {

@@ -5,6 +5,7 @@ import { H2, pill, Section, Site, solid } from "@/components/site";
 import { Button } from "@/components/ui/button";
 import { api, packName, perThousand, type Pkg } from "@/lib/api";
 import { lang, pick } from "@/lib/i18n";
+import { toApp } from "@/lib/app";
 import { mount } from "@/lib/mount";
 import { cn } from "@/lib/utils";
 import "./home.css";
@@ -199,6 +200,8 @@ const T = pick<{
     moreText: "Для муниципалитетов, сетей и точек в нескольких местах обсудим годовые цены и варианты выставления счетов.",
   },
 });
+toApp(); // ana ekrana tanıtım sitesinden eklenen uygulama da QR Wait uygulamasının ana ekranını açar (lib/app.ts)
+
 document.title = T.title;
 
 const num = (n: number) => n.toLocaleString(lang);

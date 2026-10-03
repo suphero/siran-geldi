@@ -1,16 +1,42 @@
 // Ziyaretçi cihazı: çerezdeki rastgele kimlik ("d", alan adının tamamında geçerli) başına bir nesne.
 // iPhone'da ana ekran uygulaması Safari'den ayrı depolama ve çerez kullanır; uygulama bağlama koduyla Safari'deki
 // cihaz kimliğini alır, böylece uygulamada verilen bildirim izni Safari'de alınan biletlere de bağlanır.
-// "l:<kod>" adlı nesneler bağlama kodudur: tek kullanımlık, LINK_TTL içinde geçerli.
 import { DurableObject } from "cloudflare:workers";
+import { enc, randomHex } from "./util.js";
 
 const TTL = 30 * 864e5; // kullanılmayan cihaz kaydı (abonelik, bilet listesi) bu kadar sonra silinir
-const LINK_TTL = 864e5; // ana ekrana ekleme genelde hemen yapılır; ertesi güne kalırsa yeni kod alınır
+const LINK_TTL = 864e5; // sayfa açık kaldıkça kod yenilenir; ana ekrana eklenen uygulama genelde hemen açılır
 const MAX_ROOMS = 20;
 
-// Bağlama kodu: 32 karakter onaltılık. Cihaz kimliği: crypto.randomUUID() (eski sayfalarda localStorage'dan)
-export const CODE_RE = /^[a-f0-9]{32}$/;
+// Cihaz kimliği: crypto.randomUUID() (eski sayfalarda localStorage'dan)
 export const DEVICE_RE = /^[\w-]{16,64}$/;
+
+// Bağlama kodu: cihaz kimliği sunucu anahtarıyla şifrelenir (AES-GCM). Adreste kimlik görünmez, kod üretmek için kayıt
+// tutulmaz (iPhone'da sıra ve durum sayfaları her açılışta kod alır). Anahtar VAPID özel anahtarından türetilir (HKDF),
+// ayrı secret gerekmez. Kod LINK_TTL boyunca geçerli, tek kullanımlık (Visitor.claim).
+const b64u = (b) => btoa(String.fromCharCode(...b)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+const unb64u = (s) => Uint8Array.from(atob(s.replaceAll("-", "+").replaceAll("_", "/")), (c) => c.charCodeAt(0));
+
+async function linkKey(env) {
+  const ikm = await crypto.subtle.importKey("raw", enc(env.VAPID_PRIVATE_KEY), "HKDF", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: enc("qrwait"), info: enc("device-link") }, ikm,
+    { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+
+export async function sealLink(env, device) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await linkKey(env), enc(JSON.stringify({ d: device, n: randomHex(8), x: Date.now() + LINK_TTL })));
+  return b64u(new Uint8Array([...iv, ...new Uint8Array(data)]));
+}
+
+// Geçerliyse { d: cihaz, n: tek kullanımlık numara }, değilse null
+export async function openLink(env, code) {
+  try {
+    const b = unb64u(code);
+    const p = JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: b.slice(0, 12) }, await linkKey(env), b.slice(12))));
+    return p.x > Date.now() && DEVICE_RE.test(p.d) ? p : null;
+  } catch { return null; }
+}
 
 export class Visitor extends DurableObject {
   // v: { sub?, rooms: { <oda id>: { id: <bilet>, at } }, at: son kullanım }
@@ -62,17 +88,13 @@ export class Visitor extends DurableObject {
     await this.store(v);
   }
 
-  // Bağlama kodu nesnesi
-  async hold(device) {
-    const exp = Date.now() + LINK_TTL;
-    await this.ctx.storage.put("l", { device, exp });
-    await this.ctx.storage.setAlarm(exp);
-  }
-
-  async redeem() {
-    const l = await this.ctx.storage.get("l");
-    await this.clear();
-    return l && l.exp > Date.now() ? l.device : null;
+  // Bağlama kodu kullanıldı: aynı kod ikinci kez kabul edilmez (adres paylaşılırsa başkası bu cihaz olamaz)
+  async claim(n) {
+    const v = await this.load();
+    if (v.used?.includes(n)) return false;
+    v.used = [...(v.used ?? []), n].slice(-20);
+    await this.store(v);
+    return true;
   }
 
   async clear() {

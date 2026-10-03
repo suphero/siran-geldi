@@ -159,7 +159,9 @@ vs.w.close(); hs.w.close();
   const { code } = await post("/api/v/link", {}, jar);
   assert.match((await raw("/api/v/redeem", { code })).headers.get("set-cookie") ?? "", new RegExp(`d=${d};.*HttpOnly`), "uygulama Safari'deki cihazı alır");
   assert.deepEqual(await post("/api/v/redeem", { code }), { ok: false }, "kod tek kullanımlık");
-  assert.ok((await post("/api/v/link", {})).error, "çerezsiz kod alınamaz");
+  assert.deepEqual(await post("/api/v/redeem", { code: code.slice(0, -4) + "AAAA" }), { ok: false }, "değiştirilmiş kod geçersiz");
+  const nl = await raw("/api/v/link", {});
+  assert.ok((await nl.json()).code && /d=[\w-]+;/.test(nl.headers.get("set-cookie") ?? ""), "çerezi olmayana cihaz çerezi ve kod verilir");
   assert.deepEqual(await post(`/api/r/${x.room}/push`, { id: t1.id, sub }, jar), { ok: true });
   // Önde 3 grup: "sıranız yaklaşıyor" bildirimi hemen gitmesin (sahte abonelik gönderimde geçersiz sayılıp silinir)
   const ty = await tok(y);

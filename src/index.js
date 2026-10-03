@@ -5,7 +5,7 @@ import { deskLabel, fail, failed, LANGS, langOf, localize, msg, tableLabel } fro
 import { mail } from "./mail.js";
 import { cleanSub, sendPush } from "./push.js";
 import { enc, hex, randomHex, same, sha256, sign } from "./util.js";
-import { CODE_RE, DEVICE_RE, Visitor } from "./visitor.js";
+import { DEVICE_RE, openLink, sealLink, Visitor } from "./visitor.js";
 
 export { Account, Visitor };
 
@@ -1517,18 +1517,18 @@ function withDevice(res, device, url, env) {
 async function visitorApi(req, env, url, body) {
   const device = deviceOf(req);
   switch (url.pathname) {
-    // Ana ekrana eklenecek adrese konan tek kullanımlık kod; cihaz kimliği adreste görünmez
+    // iPhone'da sıra ve durum sayfalarının adresine konan bağlama kodu: ana ekrana nereden eklenirse eklensin kaydedilen
+    // adreste olur. Cihazın çerezi yoksa burada verilir (eski sayfalar localStorage'daki kimliği gönderir).
     case "/api/v/link": {
-      if (!device) throw fail("device");
-      await limit(env, "JOIN_LIMIT", `link:${ip(req)}`);
-      const code = randomHex(16);
-      await env.VISITOR.getByName(`l:${code}`).hold(device);
-      return Response.json({ code });
+      if (!env.VAPID_PRIVATE_KEY) return Response.json({ code: null });
+      const d = device ?? (DEVICE_RE.test(body.device ?? "") ? body.device : crypto.randomUUID());
+      const res = Response.json({ code: await sealLink(env, d) });
+      return device ? res : withDevice(res, d, url, env);
     }
-    // Uygulamanın ilk açılışı: kod Safari'deki cihaz kimliğine çevrilir, uygulamanın çerezine yazılır
+    // Uygulamanın ilk açılışı: kod tarayıcıdaki cihaz kimliğine çevrilir, uygulamanın çerezine yazılır
     case "/api/v/redeem": {
-      const d = CODE_RE.test(body.code ?? "") && (await env.VISITOR.getByName(`l:${body.code}`).redeem());
-      return d && DEVICE_RE.test(d) ? withDevice(Response.json({ ok: true }), d, url, env) : Response.json({ ok: false });
+      const p = typeof body.code === "string" && body.code.length < 400 && env.VAPID_PRIVATE_KEY && (await openLink(env, body.code));
+      return p && (await env.VISITOR.getByName(p.d).claim(p.n)) ? withDevice(Response.json({ ok: true }), p.d, url, env) : Response.json({ ok: false });
     }
     // Bitmemiş biletler, en son girilen sonda; bitenler kayıttan silinir
     case "/api/v/tickets": {

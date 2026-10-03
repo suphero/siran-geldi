@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Scanner } from "@/components/scanner";
 import { Label } from "@/components/ui/label";
 import { api, catIcon, live, locate, type Me, type Status } from "@/lib/api";
+import { isIOS, keepLink, linkAddress, standalone } from "@/lib/app";
 import { closedText, deskLabel, fmtWait, geoErrors, lang, orList, pick, pl, S, tableLabel } from "@/lib/i18n";
 import { LEGAL, siteUrl } from "@/components/legal";
 import { mount } from "@/lib/mount";
@@ -16,14 +17,16 @@ import { cn } from "@/lib/utils";
 
 const q = new URLSearchParams(location.search);
 // u: işletmenin alt alan adı; uygulama içi okuyucu başka işletmenin QR'ını kendi adresinde açarken verir (bkz. inApp)
-const ref = q.get("r") ?? "", token = q.get("t"), owner = q.get("u") ?? "";
+const ref = q.get("r") ?? "", owner = q.get("u") ?? "";
 const base = [owner && `u=${encodeURIComponent(owner)}`, ref && `r=${encodeURIComponent(ref)}`].filter(Boolean);
 let room = "", slot = ""; // açılışta slug/alt alan adından çözülür
 let device = localStorage.getItem("device");
 if (!device) localStorage.setItem("device", device = crypto.randomUUID());
 navigator.serviceWorker?.register("/sw.js");
-const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-const standalone = (navigator as any).standalone || matchMedia("(display-mode: standalone)").matches;
+linkAddress();
+// Ana ekran uygulamasının başlangıç adresi ekleme anında sabitlenir; içinde QR belirteci kalmışsa her açılışta gelir.
+// Uygulamada kullanılmış ya da süresi geçmiş belirteç yok sayılır (değişen QR en fazla 5 dk geçerli; sabit QR "s." ile başlar).
+const token = ((t) => t && !(standalone && (localStorage.getItem("tUsed") === t || (!t.startsWith("s.") && Date.now() - Number(t.split(".")[0]) > 300000))) ? t : null)(q.get("t"));
 // iPhone'da Paylaş: Safari'de alt araç çubuğunda (yeni sürümlerde ⋯ içinde), Chrome'da ve iPad'de sağ üstte
 const ua = navigator.userAgent, shareAt = /CriOS/.test(ua) || !/iPhone|iPod/.test(ua) ? "top" : /FxiOS|EdgiOS|OPiOS/.test(ua) ? "menu" : "bottom";
 
@@ -429,13 +432,11 @@ function JoinPage() {
     setPushBtn(true);
   }
 
-  // Ana ekrandaki uygulama Safari'den ayrı depolama ve çerez kullanır; ana ekrana eklerken o anki adres kaydedilir.
-  // l: tek kullanımlık cihaz bağlama kodu (uygulama Safari'deki cihaz sayılır, sonraki biletlere de bildirim gider),
-  // k: bu bilet (kod alınamazsa / eski yöntem)
-  async function startInstall() {
+  // Ana ekrana eklerken o anki adres kaydedilir: cihaz bağlama kodu (l) zaten adreste (lib/app.ts), k bu bilet (kod alınamazsa)
+  function startInstall() {
     const id = localStorage.getItem(slot);
-    const { code } = await api<{ code: string }>("/api/v/link", {}).catch(() => ({ code: "" }));
-    history.replaceState(null, "", `?${[...base, id && `k=${id}`, code && `l=${code}`].filter(Boolean).join("&")}`);
+    history.replaceState(null, "", `?${[...base, id && `k=${id}`].filter(Boolean).join("&")}`);
+    keepLink();
     setGuide(true);
   }
 
@@ -496,14 +497,15 @@ function JoinPage() {
 
   useEffect(() => {
     (async () => {
-      // Ana ekran uygulamasının ilk açılışı: Safari'deki cihaz kimliği çereze yazılır (kod tek kullanımlık)
+      // Ana ekran uygulamasının ilk açılışı: tarayıcıdaki cihaz kimliği uygulamanın çerezine yazılır (kod tek kullanımlık)
       const code = q.get("l");
-      if (standalone && code && !localStorage.getItem("linked")) {
+      if (standalone && code && localStorage.getItem("linked") !== code) {
+        localStorage.setItem("linked", code);
         await api("/api/v/redeem", { code }).catch(() => {});
-        localStorage.setItem("linked", "1");
       }
       return api<{ room: string }>(`/api/resolve?${base.join("&") || "r="}`);
     })().then(async (r) => {
+      if (!r.room) throw new Error(); // işletmenin kök adresi (sıra listesi): uygulamanın ana ekranı açılır
       room = r.room;
       slot = "ticket:" + room;
       // iOS ana ekran uygulaması ilk açılışta bileti adresten alır (bkz. startInstall)
@@ -560,8 +562,10 @@ function JoinPage() {
       const c = st?.geo === "off" ? null : await locate(geoErrors);
       const r = await api<{ id: string }>(`/api/r/${room}/join`, { t: token, lat: c?.latitude, lng: c?.longitude, size, accept, zones, device, lang });
       localStorage.setItem(slot, r.id);
+      if (standalone) localStorage.setItem("tUsed", token!);
       await perm;
       history.replaceState(null, "", base.length ? `?${base.join("&")}` : location.pathname); // süresi dolacak token'ı adres çubuğundan kaldır
+      keepLink();
       await refresh();
     } catch (e: any) { setErr(e.message); }
     setBusy(false);

@@ -4,6 +4,7 @@ import { api, catIcon, locate, type PublicRoom } from "@/lib/api";
 import { fmtDistL, geoErrors, lang, pick, sitePath, waitText } from "@/lib/i18n";
 import { baseMap, L, meters } from "@/lib/leaflet";
 import { H2, pill, Section, Site, solid, type Use } from "@/components/site";
+import { toApp } from "@/lib/app";
 import { mount } from "@/lib/mount";
 import { cn } from "@/lib/utils";
 import "./home.css";
@@ -233,6 +234,8 @@ const T = pick<{
     contactText: "Хотите систему очереди для вашего пляжа, бизнеса или мероприятия? Напишите нам — настроим вместе.",
   },
 });
+toApp(); // ana ekrana tanıtım sitesinden eklenen uygulama da QR Wait uygulamasının ana ekranını açar (lib/app.ts)
+
 document.title = T.title;
 // T.uses sırasıyla: plaj, iskele, belediye, etkinlik, özel işletmeler, sıra durumu → ayrıntılı senaryo sayfası
 const USE_LINK: (Use | null)[] = ["beach-queue", null, "service-desk-queue", "event-queue", "restaurant-waitlist", null];
