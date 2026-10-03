@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, catIcon, poll, type PublicRoom, type Status } from "@/lib/api";
 import { closedText, deskLabel, fmtWait, lang, pick, S, waitText, word } from "@/lib/i18n";
 import { LEGAL, siteUrl } from "@/components/legal";
-import { linkAddress, toApp } from "@/lib/app";
+import { toApp } from "@/lib/app";
 import { mount } from "@/lib/mount";
 
 // antalyabb.qrwait.app/bambus ya da /status?r=bambus; kullanıcı alt alan adından (yoksa ?u=)
@@ -13,7 +13,7 @@ const q = new URLSearchParams(location.search), path = location.pathname.slice(1
 const ref = q.get("r") ?? (path === "status" ? "" : path), user = q.get("u") ?? "";
 
 // Ana ekrana bu sayfadan eklenen uygulama da QR Wait uygulaması gibi açılsın (bkz. lib/app.ts)
-if (!toApp({ r: ref })) linkAddress();
+toApp({ r: ref });
 
 const T = pick({
   tr: {

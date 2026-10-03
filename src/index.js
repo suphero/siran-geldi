@@ -1504,6 +1504,24 @@ async function page(req, env, url) {
   return env.ASSETS.fetch(new Request(new URL(`/status${url.search}`, url), req));
 }
 
+// Ana ekran uygulamasının başlangıç adresi manifest'ten gelir. iPhone manifest'i sayfa yüklenirken okur, adres çubuğunda
+// sonradan yapılan değişikliği görmez. Bu yüzden sıra ve durum sayfalarının manifest bağlantısı sayfaya özeldir: işletme (u),
+// sıra (r) ve cihaz bağlama kodu (l). Uygulama hangi sayfadan eklenirse eklensin ilk açılışta tarayıcıdaki cihaz olur.
+async function appManifest(res, req, env, url) {
+  const sub = subdomain(url, env), path = url.pathname.slice(1);
+  const app = path === "join" || path === "status" || (sub && (path === "" || NAME_RE.test(path)));
+  if (!app || !res.headers.get("content-type")?.includes("text/html")) return res;
+  const known = deviceOf(req), device = known ?? crypto.randomUUID(), p = new URLSearchParams();
+  const u = url.searchParams.get("u") || sub, r = url.searchParams.get("r") || (NAME_RE.test(path) && !PAGES.has(url.pathname) ? path : "");
+  if (u) p.set("u", u);
+  if (r) p.set("r", r);
+  if (linkSecret(env)) p.set("l", await sealLink(env, device));
+  const html = new HTMLRewriter().on('link[rel="manifest"]', { element: (el) => el.setAttribute("href", `/api/manifest?${p}`) }).transform(res);
+  const out = new Response(html.body, html);
+  out.headers.set("cache-control", "no-store"); // kod sayfa başına; önbellekten gelen sayfa eski kodu taşımasın
+  return known ? out : withDevice(out, device, url, env);
+}
+
 // Ziyaretçi cihazı: sunucunun koyduğu HttpOnly "d" çerezi, ana alan adı ve tüm alt alan adlarında (işletme adresleri) geçerli.
 // Sunucunun koyduğu çerez Safari'de 7 güne kısılmaz. Çerezsiz eski sayfalar localStorage'daki kimliği gönderir.
 const deviceOf = (req) => req.headers.get("cookie")?.match(/(?:^|;\s*)d=([\w-]{16,64})(?:;|$)/)?.[1] ?? null;
@@ -1517,14 +1535,6 @@ function withDevice(res, device, url, env) {
 async function visitorApi(req, env, url, body) {
   const device = deviceOf(req);
   switch (url.pathname) {
-    // iPhone'da sıra ve durum sayfalarının adresine konan bağlama kodu: ana ekrana nereden eklenirse eklensin kaydedilen
-    // adreste olur. Cihazın çerezi yoksa burada verilir (eski sayfalar localStorage'daki kimliği gönderir).
-    case "/api/v/link": {
-      if (!linkSecret(env)) return Response.json({ code: null });
-      const d = device ?? (DEVICE_RE.test(body.device ?? "") ? body.device : crypto.randomUUID());
-      const res = Response.json({ code: await sealLink(env, d) });
-      return device ? res : withDevice(res, d, url, env);
-    }
     // Uygulamanın ilk açılışı: kod tarayıcıdaki cihaz kimliğine çevrilir, uygulamanın çerezine yazılır
     case "/api/v/redeem": {
       const p = typeof body.code === "string" && body.code.length < 400 && linkSecret(env) && (await openLink(env, body.code));
@@ -1548,7 +1558,7 @@ async function handle(req, env) {
   try {
     if (!url.pathname.startsWith("/api/")) {
       // Buraya yalnızca PAGES, /admin, kök ve eşleşen dosyası olmayan yollar gelir
-      if (PAGES.has(url.pathname) || url.pathname === "/" || url.pathname === "/admin" || (subdomain(url, env) && NAME_RE.test(url.pathname.slice(1)))) return await page(req, env, url);
+      if (PAGES.has(url.pathname) || url.pathname === "/" || url.pathname === "/admin" || (subdomain(url, env) && NAME_RE.test(url.pathname.slice(1)))) return await appManifest(await page(req, env, url), req, env, url);
       return new Response("Not found", { status: 404 });
     }
     if (url.pathname === "/api/lemon" && req.method === "POST") return await webhook(req, env); // gövde ham haliyle imzalanır
@@ -1565,6 +1575,15 @@ async function handle(req, env) {
     }
     if (url.pathname === "/api/rooms") return await publicRooms(req, env, url, reg);
     if (url.pathname === "/api/vapid") return Response.json({ key: env.VAPID_PUBLIC_KEY ?? null });
+    // Sayfaya özel manifest (bkz. appManifest): ad ve simgeler sabit manifest'ten, başlangıç adresi sorgudan
+    if (url.pathname === "/api/manifest") {
+      const m = await (await env.ASSETS.fetch(new Request(new URL("/manifest.json", url)))).json(), p = new URLSearchParams();
+      for (const k of ["u", "r", "l"]) {
+        const v = url.searchParams.get(k);
+        if (v && /^[\w-]{1,400}$/.test(v)) p.set(k, v);
+      }
+      return Response.json({ ...m, start_url: `/join?${p}` }, { headers: { "content-type": "application/manifest+json", "cache-control": "no-store" } });
+    }
     if (url.pathname.startsWith("/api/v/")) {
       const res = await visitorApi(req, env, url, body);
       if (res) return res;

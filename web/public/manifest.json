@@ -1,6 +1,9 @@
 {
   "name": "QR Wait",
   "short_name": "QR Wait",
+  "id": "/join",
+  "start_url": "/join",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#1B2A4A",
   "theme_color": "#1B2A4A",

@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Scanner } from "@/components/scanner";
 import { Label } from "@/components/ui/label";
 import { api, catIcon, live, locate, type Me, type Status } from "@/lib/api";
-import { isIOS, keepLink, linkAddress, standalone } from "@/lib/app";
+import { isIOS, standalone } from "@/lib/app";
 import { closedText, deskLabel, fmtWait, geoErrors, lang, orList, pick, pl, S, tableLabel } from "@/lib/i18n";
 import { LEGAL, siteUrl } from "@/components/legal";
 import { mount } from "@/lib/mount";
@@ -23,7 +23,6 @@ let room = "", slot = ""; // açılışta slug/alt alan adından çözülür
 let device = localStorage.getItem("device");
 if (!device) localStorage.setItem("device", device = crypto.randomUUID());
 navigator.serviceWorker?.register("/sw.js");
-linkAddress();
 // Ana ekran uygulamasının başlangıç adresi ekleme anında sabitlenir; içinde QR belirteci kalmışsa her açılışta gelir.
 // Uygulamada kullanılmış ya da süresi geçmiş belirteç yok sayılır (değişen QR en fazla 5 dk geçerli; sabit QR "s." ile başlar).
 const token = ((t) => t && !(standalone && (localStorage.getItem("tUsed") === t || (!t.startsWith("s.") && Date.now() - Number(t.split(".")[0]) > 300000))) ? t : null)(q.get("t"));
@@ -432,11 +431,8 @@ function JoinPage() {
     setPushBtn(true);
   }
 
-  // Ana ekrana eklerken o anki adres kaydedilir: cihaz bağlama kodu (l) zaten adreste (lib/app.ts), k bu bilet (kod alınamazsa)
+  // Başlangıç adresi ve cihaz bağlama kodu sayfanın manifest'inde (src/index.js appManifest): rehber yalnızca yol gösterir
   function startInstall() {
-    const id = localStorage.getItem(slot);
-    history.replaceState(null, "", `?${[...base, id && `k=${id}`].filter(Boolean).join("&")}`);
-    keepLink();
     setGuide(true);
   }
 
@@ -565,7 +561,6 @@ function JoinPage() {
       if (standalone) localStorage.setItem("tUsed", token!);
       await perm;
       history.replaceState(null, "", base.length ? `?${base.join("&")}` : location.pathname); // süresi dolacak token'ı adres çubuğundan kaldır
-      keepLink();
       await refresh();
     } catch (e: any) { setErr(e.message); }
     setBusy(false);

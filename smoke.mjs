@@ -156,12 +156,19 @@ vs.w.close(); hs.w.close();
   const d = j1.headers.get("set-cookie")?.match(/d=([\w-]+)/)?.[1];
   assert.match(d ?? "", /^device-cookie-\d+$/, "eski sayfanın cihaz kimliği çereze yazılır");
   const jar = { cookie: `d=${d}` }, t1 = await j1.json();
-  const { code } = await post("/api/v/link", {}, jar);
+  // Sıra sayfası manifest'i sayfaya özel: başlangıç adresinde sıra ve cihaz bağlama kodu
+  const html = await (await globalThis.fetch(`${B}/join?r=${x.room}&t=eski`, { headers: jar })).text();
+  const mf = await (await globalThis.fetch(B + html.match(/rel="manifest" href="([^"]+)"/)[1].replaceAll("&amp;", "&"))).json();
+  const start = new URL(mf.start_url, B);
+  assert.equal(start.pathname, "/join");
+  assert.equal(start.searchParams.get("r"), x.room);
+  assert.equal(start.searchParams.get("t"), null, "QR belirteci başlangıç adresine girmez");
+  const code = start.searchParams.get("l");
   assert.match((await raw("/api/v/redeem", { code })).headers.get("set-cookie") ?? "", new RegExp(`d=${d};.*HttpOnly`), "uygulama Safari'deki cihazı alır");
   assert.deepEqual(await post("/api/v/redeem", { code }), { ok: false }, "kod tek kullanımlık");
   assert.deepEqual(await post("/api/v/redeem", { code: code.slice(0, -4) + "AAAA" }), { ok: false }, "değiştirilmiş kod geçersiz");
-  const nl = await raw("/api/v/link", {});
-  assert.ok((await nl.json()).code && /d=[\w-]+;/.test(nl.headers.get("set-cookie") ?? ""), "çerezi olmayana cihaz çerezi ve kod verilir");
+  const np = await globalThis.fetch(`${B}/status?r=${x.room}`);
+  assert.ok(/d=[\w-]+;/.test(np.headers.get("set-cookie") ?? "") && /api\/manifest\?[^"]*l=/.test(await np.text()), "çerezi olmayana durum sayfasında cihaz çerezi ve kod verilir");
   assert.deepEqual(await post(`/api/r/${x.room}/push`, { id: t1.id, sub }, jar), { ok: true });
   // Önde 3 grup: "sıranız yaklaşıyor" bildirimi hemen gitmesin (sahte abonelik gönderimde geçersiz sayılıp silinir)
   const ty = await tok(y);
