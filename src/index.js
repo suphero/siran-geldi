@@ -198,8 +198,37 @@ export class Room extends DurableObject {
     if (vis) delete e.hid;
     else e.hid = e.seen;
     await this.save(true);
-    // Ziyaretçilere değişen bir şey yok; panel ise beklemeden yenilensin
+    this.tickHosts(); // ziyaretçilere değişen bir şey yok; panel ise beklemeden yenilensin
+  }
+
+  tickHosts() {
     for (const ws of this.ctx.getWebSockets()) if ((ws.deserializeAttachment() ?? {}).host) try { ws.send(TICK); } catch {}
+  }
+
+  // Ziyaretçinin sıraya uzaklığı (m): sabit konumda sıranın yeri, görevli konumunda görevlinin son konumu (eskiyse yok)
+  distance(lat, lng) {
+    const s = this.s, c = conf(s);
+    if (c.geo === "off" || !(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) return null;
+    const at = c.geo === "dynamic" ? s.here : s;
+    if (!at || (c.geo === "dynamic" && !(Date.now() - at.at < HERE_TTL))) return null;
+    return Math.round(meters(at, { lat, lng }));
+  }
+
+  // Sayfa açıkken dakikada bir gelen konum: yalnızca mesafe ve zamanı tutulur, konum saklanmaz.
+  // Panel bellekteki son değeri görür; 20 m'den az değiştiyse ve 5 dk geçmediyse diske yazılmaz, panele sinyal gitmez.
+  async where(id, lat, lng) {
+    const e = this.need().entries.find((x) => x.id === id);
+    if (!e) throw fail("entryNotFound");
+    const m = this.distance(Number(lat), Number(lng)), now = Date.now();
+    if (m === null) return { dist: e.dist ? { m: e.dist.m, at: e.dist.at } : null };
+    // w: diske en son yazılan { m, at }
+    const w = e.dist?.w, write = !w || Math.abs(w.m - m) >= 20 || now - w.at >= 300000;
+    e.dist = { m, at: now, w: write ? { m, at: now } : w };
+    if (write) {
+      await this.save(true);
+      this.tickHosts();
+    }
+    return { dist: { m, at: now } };
   }
 
   // Bilet yoksa (düştü / sıradan çıktı) durum gönderilir ve bağlantı kapanır
@@ -424,6 +453,8 @@ export class Room extends DurableObject {
       } catch (err) { console.error("visitor", err.message); }
     }
     e.seen = Date.now();
+    const m = this.distance(Number(lat), Number(lng));
+    if (m !== null) e.dist = { m, at: e.seen };
     this.fill(); // boş yer / bekleyen masa varsa hemen çağrılır
     await this.save();
     await this.notify();
@@ -481,6 +512,7 @@ export class Room extends DurableObject {
     const due = this.due(e), ahead = this.ahead(e);
     return {
       name: s.name, no: e.no, size: e.size, accept: acceptOf(e), alloc: e.alloc, table: e.table, desk: e.desk, zones: e.zones, zone: e.zone, status: e.status, calledAt: e.calledAt,
+      dist: e.dist && { m: e.dist.m, at: e.dist.at }, // son paylaşılan konumun sıraya uzaklığı
       aheadGroups: ahead.length, aheadPeople: ahead.reduce((n, x) => n + x.size, 0),
       // Süreli sırada kalan süre (ms); istemci saati farklı olabileceği için bitiş anı değil kalan gönderilir
       wait: conf(s).wait, remaining: due === null ? null : Math.max(0, due - Date.now()),
@@ -779,7 +811,7 @@ export class Room extends DurableObject {
       freeTables: s.tables,
       token: await this.token(),
       // seen: ziyaretçi sayfasının son yoklaması; notify: kapalı sayfaya push ile ulaşılabilir
-      entries: s.entries.map(({ device, push, soon, hid, ...x }) => ({ ...x, ...(x.src === "qr" && { notify: !!push, hidden: !!hid, seen: hid ?? (Math.max(x.seen ?? 0, pings[x.id] ?? 0) || undefined) }) })),
+      entries: s.entries.map(({ device, push, soon, hid, ...x }) => ({ ...x, ...(x.src === "qr" && { notify: !!push, hidden: !!hid, dist: x.dist && { m: x.dist.m, at: x.dist.at }, seen: hid ?? (Math.max(x.seen ?? 0, pings[x.id] ?? 0) || undefined) }) })),
     };
   }
 }
@@ -1599,7 +1631,7 @@ async function handle(req, env) {
       if (!x.room && !x.account) throw fail("notFound");
       return Response.json(x.account ? { account: x.account } : { room: x.room });
     }
-    const m = url.pathname.match(/^\/api\/r\/([a-f0-9]{10})\/(join|me|leave|push|admin|status)$/);
+    const m = url.pathname.match(/^\/api\/r\/([a-f0-9]{10})\/(join|me|leave|push|admin|status|where)$/);
     if (!m) return new Response("Not found", { status: 404 });
     const room = env.ROOM.getByName(m[1]);
     switch (m[2]) {
@@ -1612,6 +1644,7 @@ async function handle(req, env) {
       }
       case "me": return Response.json(await room.me(url.searchParams.get("id"), req.headers.get("x-lang"), url.searchParams.get("hidden") === "1"));
       case "leave": return Response.json(await room.leave(body.id));
+      case "where": return Response.json(await room.where(body.id, body.lat, body.lng));
       case "push": return Response.json(await room.subscribe(body.id, body.sub, deviceOf(req)));
       case "admin": return Response.json(await room.admin(req.headers.get("x-key"), body));
       case "status": return Response.json(await room.status());

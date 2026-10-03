@@ -8,9 +8,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Scanner } from "@/components/scanner";
 import { Label } from "@/components/ui/label";
-import { api, catIcon, live, locate, type Me, type Status } from "@/lib/api";
+import { api, catIcon, live, locate, type Dist, type Me, type Status } from "@/lib/api";
 import { isIOS, standalone } from "@/lib/app";
-import { closedText, deskLabel, fmtWait, geoErrors, lang, orList, pick, pl, S, tableLabel } from "@/lib/i18n";
+import { closedText, deskLabel, fmtDist, fmtWait, geoErrors, lang, orList, pick, pl, S, tableLabel } from "@/lib/i18n";
 import { LEGAL, siteUrl } from "@/components/legal";
 import { mount } from "@/lib/mount";
 import { cn } from "@/lib/utils";
@@ -40,6 +40,10 @@ function inApp(text: string) {
   if (sub && sub !== "www") p.set("u", sub);
   return `/join?${p}`;
 }
+
+// İki konum arası metre (yaklaşık; yalnızca "ne kadar hareket etti" için)
+const moved = (a: { lat: number; lng: number }, b: GeolocationCoordinates) =>
+  Math.hypot((b.latitude - a.lat) * 111320, (b.longitude - a.lng) * 111320 * Math.cos((a.lat * Math.PI) / 180));
 
 // iPhone'da sayfa ancak kullanıcının dokunduğu anda açılmış bir AudioContext ile ses çalabilir: her dokunuşta hazırlanır
 let audio: AudioContext | null = null;
@@ -106,6 +110,8 @@ const T = pick({
     gConfirm: "Ekle",
     gOpen: "Ana ekrandaki QR Wait'i açın",
     gotIt: "Tamam",
+    distQueue: (d: string) => `📍 Sıraya ${d}`,
+    distHost: (d: string) => `📍 Görevliye ${d}`,
     pushOn: "🔔 Bildirimler açık. Sayfayı kapatsanız veya ekranı kilitleseniz de sıranız gelince haber vereceğiz.",
     pushDenied: "Bildirimler kapalı. Bu sayfayı açık tutun ya da tarayıcı ayarlarından bu siteye bildirim izni verin.",
     pushNo: "Bu cihazda bildirim desteklenmiyor (iPhone'da iOS 16.4 veya üstü gerekir). Sıra size gelince haber alabilmek için bu sayfayı açık tutun.",
@@ -120,8 +126,8 @@ const T = pick({
     zoneWaiting: (n: number) => (n ? `${n} grup bekliyor` : "bekleyen yok"),
     zonesMine: (list: string) => `Bölge: ${list}`,
     join: "Sıraya gir",
-    geoNote: "Sıraya girebilmek için sıranın bulunduğu yerde olmanız ve konum izni vermeniz gerekir. Konumunuz yalnızca bu kontrol için kullanılır, saklanmaz.",
-    geoNoteHost: "Sıraya girebilmek için QR kodunu gösteren görevlinin yakınında olmanız ve konum izni vermeniz gerekir. Konumunuz yalnızca bu kontrol için kullanılır, saklanmaz.",
+    geoNote: "Sıraya girebilmek için sıranın bulunduğu yerde olmanız ve konum izni vermeniz gerekir. Konumunuz saklanmaz; görevli yalnızca uzaklığınızı görür.",
+    geoNoteHost: "Sıraya girebilmek için QR kodunu gösteren görevlinin yakınında olmanız ve konum izni vermeniz gerekir. Konumunuz saklanmaz; görevli yalnızca uzaklığınızı görür.",
     yourNo: "Sıra numaranız",
     yourTurn: "Sıra size geldi!",
     tableReady: "Masanız hazır!",
@@ -164,6 +170,8 @@ const T = pick({
     gConfirm: "Add",
     gOpen: "Open QR Wait from your home screen",
     gotIt: "Got it",
+    distQueue: (d: string) => `📍 ${d} to the queue`,
+    distHost: (d: string) => `📍 ${d} to the attendant`,
     pushOn: "🔔 Notifications are on. We'll let you know when it's your turn, even if you close this page or lock the screen.",
     pushDenied: "Notifications are off. Keep this page open, or allow notifications for this site in your browser settings.",
     pushNo: "Notifications aren't supported on this device (iPhone needs iOS 16.4 or later). Keep this page open so you know when it's your turn.",
@@ -178,8 +186,8 @@ const T = pick({
     zoneWaiting: (n: number) => (n ? `${pl(n, { one: "group", other: "groups" })} waiting` : "nobody waiting"),
     zonesMine: (list: string) => `Area: ${list}`,
     join: "Join the queue",
-    geoNote: "To join, you need to be at the queue's location and allow location access. Your location is only used for this check and is not stored.",
-    geoNoteHost: "To join, you need to be near the attendant showing the QR code and allow location access. Your location is only used for this check and is not stored.",
+    geoNote: "To join, you need to be at the queue's location and allow location access. Your location isn't stored; the attendant only sees your distance.",
+    geoNoteHost: "To join, you need to be near the attendant showing the QR code and allow location access. Your location isn't stored; the attendant only sees your distance.",
     yourNo: "Your number",
     yourTurn: "It's your turn!",
     tableReady: "Your table is ready!",
@@ -222,6 +230,8 @@ const T = pick({
     gConfirm: "Hinzufügen",
     gOpen: "QR Wait auf dem Home-Bildschirm öffnen",
     gotIt: "OK",
+    distQueue: (d: string) => `📍 ${d} zur Warteschlange`,
+    distHost: (d: string) => `📍 ${d} zum Personal`,
     pushOn: "🔔 Benachrichtigungen sind aktiv. Wir melden uns, wenn Sie an der Reihe sind – auch wenn Sie die Seite schließen oder den Bildschirm sperren.",
     pushDenied: "Benachrichtigungen sind deaktiviert. Lassen Sie diese Seite geöffnet oder erlauben Sie Benachrichtigungen für diese Seite in den Browsereinstellungen.",
     pushNo: "Benachrichtigungen werden auf diesem Gerät nicht unterstützt (iPhone benötigt iOS 16.4 oder neuer). Lassen Sie diese Seite geöffnet, damit Sie erfahren, wann Sie an der Reihe sind.",
@@ -236,8 +246,8 @@ const T = pick({
     zoneWaiting: (n: number) => (n ? `${pl(n, { one: "Gruppe", other: "Gruppen" })} warten` : "niemand wartet"),
     zonesMine: (list: string) => `Bereich: ${list}`,
     join: "Anstellen",
-    geoNote: "Zum Anstellen müssen Sie am Ort der Warteschlange sein und die Standortfreigabe erlauben. Ihr Standort wird nur für diese Prüfung verwendet und nicht gespeichert.",
-    geoNoteHost: "Zum Anstellen müssen Sie in der Nähe der Person sein, die den QR-Code zeigt, und die Standortfreigabe erlauben. Ihr Standort wird nur für diese Prüfung verwendet und nicht gespeichert.",
+    geoNote: "Zum Anstellen müssen Sie am Ort der Warteschlange sein und die Standortfreigabe erlauben. Ihr Standort wird nicht gespeichert; das Personal sieht nur Ihre Entfernung.",
+    geoNoteHost: "Zum Anstellen müssen Sie in der Nähe der Person sein, die den QR-Code zeigt, und die Standortfreigabe erlauben. Ihr Standort wird nicht gespeichert; das Personal sieht nur Ihre Entfernung.",
     yourNo: "Ihre Nummer",
     yourTurn: "Sie sind dran!",
     tableReady: "Ihr Tisch ist bereit!",
@@ -280,6 +290,8 @@ const T = pick({
     gConfirm: "Добавить",
     gOpen: "Откройте QR Wait с экрана «Домой»",
     gotIt: "Понятно",
+    distQueue: (d: string) => `📍 ${d} до очереди`,
+    distHost: (d: string) => `📍 ${d} до сотрудника`,
     pushOn: "🔔 Уведомления включены. Мы сообщим, когда подойдёт ваша очередь, даже если вы закроете страницу или заблокируете экран.",
     pushDenied: "Уведомления отключены. Не закрывайте эту страницу или разрешите уведомления для этого сайта в настройках браузера.",
     pushNo: "Уведомления не поддерживаются на этом устройстве (на iPhone нужна iOS 16.4 или новее). Не закрывайте эту страницу, чтобы узнать, когда подойдёт ваша очередь.",
@@ -294,8 +306,8 @@ const T = pick({
     zoneWaiting: (n: number) => (n ? `ждут: ${pl(n, { one: "группа", few: "группы", many: "групп", other: "группы" })}` : "никто не ждёт"),
     zonesMine: (list: string) => `Зона: ${list}`,
     join: "Встать в очередь",
-    geoNote: "Чтобы встать в очередь, нужно находиться на месте и разрешить доступ к геолокации. Местоположение используется только для этой проверки и не сохраняется.",
-    geoNoteHost: "Чтобы встать в очередь, нужно находиться рядом с сотрудником, который показывает QR-код, и разрешить доступ к геолокации. Местоположение используется только для этой проверки и не сохраняется.",
+    geoNote: "Чтобы встать в очередь, нужно находиться на месте и разрешить доступ к геолокации. Местоположение не сохраняется; сотрудник видит только расстояние.",
+    geoNoteHost: "Чтобы встать в очередь, нужно находиться рядом с сотрудником, который показывает QR-код, и разрешить доступ к геолокации. Местоположение не сохраняется; сотрудник видит только расстояние.",
     yourNo: "Ваш номер",
     yourTurn: "Ваша очередь!",
     tableReady: "Ваш столик готов!",
@@ -530,6 +542,38 @@ function JoinPage() {
     return live(`/api/r/${room}/live?id=${encodeURIComponent(id)}`, show, refresh, { ms: 10000, slow: 60000, hidden: true, vis: true });
   }, [waiting]);
 
+  // Sırada (çağrılınca da) sayfa ekrandayken konum izlenir: 10 m hareket ettikçe ve en geç dakikada bir sıraya uzaklık
+  // güncellenir (görevli konumlu sırada görevli de yer değiştirir). İzin istenmez; konum kontrollü sırada girişte verildi.
+  // Sunucuya konum gider, yalnızca mesafe saklanır.
+  const geo = st?.geo;
+  useEffect(() => {
+    const id = waiting && geo && geo !== "off" && navigator.geolocation && localStorage.getItem(slot);
+    if (!id) return;
+    let watch: number | null = null, pos: GeolocationCoordinates | null = null, last: { lat: number; lng: number; at: number } | null = null;
+    const send = (c: GeolocationCoordinates) => {
+      last = { lat: c.latitude, lng: c.longitude, at: Date.now() };
+      api<{ dist: Dist | null }>(`/api/r/${room}/where`, { id, lat: c.latitude, lng: c.longitude })
+        .then((r) => r.dist && setMe((m) => m && { ...m, dist: r.dist! }))
+        .catch(() => {});
+    };
+    const start = async () => {
+      if (watch !== null || document.hidden) return;
+      const perm = await navigator.permissions?.query({ name: "geolocation" }).catch(() => null);
+      if (perm?.state !== "granted" || watch !== null || document.hidden) return;
+      watch = navigator.geolocation.watchPosition((p) => {
+        pos = p.coords;
+        if (!last || Date.now() - last.at >= 60000 || moved(last, pos) >= 10) send(pos);
+      }, () => {}, { enableHighAccuracy: true, maximumAge: 10000 });
+    };
+    const stop = () => { if (watch !== null) navigator.geolocation.clearWatch(watch); watch = null; };
+    // Yerinde duran ziyaretçide watchPosition yeni konum vermeyebilir: son konum dakikada bir yine gönderilir
+    const beat = setInterval(() => { if (pos && !document.hidden && Date.now() - (last?.at ?? 0) >= 60000) send(pos); }, 15000);
+    const onVis = () => (document.hidden ? stop() : start());
+    start();
+    document.addEventListener("visibilitychange", onVis);
+    return () => { stop(); clearInterval(beat); document.removeEventListener("visibilitychange", onVis); };
+  }, [waiting, geo]);
+
   const called = me?.status === "called";
   const closed = st ? closedText(st) : null; // yeni katılım kapalıysa nedeni
   // Geri sayım her saniye; süre dolunca sunucunun düşürdüğü hemen görülsün diye yenilenir
@@ -630,6 +674,9 @@ function JoinPage() {
                 {!timed && T.now}
               </p>
             ) : null}
+            {me.dist && geo && geo !== "off" && (
+              <p className={cn("text-sm", !called && "text-muted-foreground")}>{(geo === "dynamic" ? T.distHost : T.distQueue)(fmtDist(me.dist.m))}</p>
+            )}
             {called && timed ? (
               <div>
                 <div className="text-6xl leading-tight font-extrabold tabular-nums" role="timer" aria-live="off">{left > 0 ? clock : "0:00"}</div>

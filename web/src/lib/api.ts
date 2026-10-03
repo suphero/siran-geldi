@@ -124,12 +124,15 @@ export type Table = { id: string; cap: number; name: string; at: number; zone?: 
 export type Me = {
   name: string; status: "waiting" | "called" | "gone" | "expired"; no: number; size: number; accept: number[]; alloc?: number; table?: Table; desk?: string; zones?: string[]; zone?: string; calledAt?: number;
   aheadGroups: number; aheadPeople: number; wait: number | null; remaining: number | null; eta: number | null;
+  dist?: Dist;
 };
+// Son paylaşılan konumun sıraya (sabit konum ya da görevli) uzaklığı, metre; at: sunucu saati
+export type Dist = { m: number; at: number };
 export type Entry = {
   id: string; no: number; size: number; accept?: number[]; alloc?: number; table?: Table; desk?: string; zones?: string[]; zone?: string; src: "qr" | "manual"; note: string;
   status: "waiting" | "called"; at: number; calledAt?: number;
   // Yalnızca QR ile girenlerde: sayfanın son görülmesi (sunucu saati), sayfa şu an ekranda değil mi, push ile ulaşılabilir mi
-  seen?: number; hidden?: boolean; notify?: boolean;
+  seen?: number; hidden?: boolean; notify?: boolean; dist?: Dist;
 };
 export type AdminState = {
   name: string; flex: boolean; tables: boolean; mode: Mode; desks: string[]; idle: string[]; zones: string[]; spots: Record<string, number>; maxEmpty: number | null; available: number; added?: number;

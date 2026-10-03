@@ -138,6 +138,9 @@ export const tableLabel = (t: Pick<Table, "name" | "cap">) => (/^\d+$/.test(t.na
 // src/i18n.js'teki deskLabel ile aynı: "3" → "Gişe 3", "Vezne A" olduğu gibi
 export const deskLabel = (d: string) => (/^\d+$/.test(d) ? S.desk(d) : d);
 // Tahmini bekleme: 25 dk, 1 sa 10 dk. 10 dk'dan uzunsa 5'e yuvarlanır (kesinlik izlenimi vermesin).
+// Mesafe: 1 km altı metre, üstü bir ondalıklı km (sayı biçimi dile göre)
+export const fmtDist = (m: number) => (m < 1000 ? `${m} m` : `${new Intl.NumberFormat(lang, { maximumFractionDigits: 1 }).format(m / 1000)} km`);
+
 export const fmtWait = (n: number) => {
   const m = n > 10 ? Math.ceil(n / 5) * 5 : n;
   return m < 60 ? `${m} ${S.minU}` : `${Math.floor(m / 60)} ${S.hourU}${m % 60 ? ` ${m % 60} ${S.minU}` : ""}`;

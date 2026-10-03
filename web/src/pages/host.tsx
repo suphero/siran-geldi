@@ -11,7 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { api, live, mins, type AdminState, type Entry } from "@/lib/api";
-import { deskLabel, fmtOpens, geoErrors, lang, LANGS, pick, pl, S, tableLabel, type Lang } from "@/lib/i18n";
+import { deskLabel, fmtDist, fmtOpens, geoErrors, lang, LANGS, pick, pl, S, tableLabel, type Lang } from "@/lib/i18n";
 import { mount } from "@/lib/mount";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +41,8 @@ const T = pick({
     ago: (n: number) => `${n} dk önce`,
     online: "sayfası açık",
     seen: (n: number) => (n < 1 ? "az önce görüldü" : n < 60 ? `${n} dk önce görüldü` : "1 saattir görülmedi"),
+    away: (n: number) => (n < 1 ? "<1 dk" : n < 60 ? `${n} dk` : "1 sa+"),
+    measured: (n: number) => (n < 1 ? "Az önce ölçüldü" : `${n} dk önce ölçüldü`),
     pushOn: "Bildirim açık: sayfası kapalıyken de çağrıdan haberi olur",
     pushOff: "Bildirim kapalı: yalnızca sayfası açıkken çağrıdan haberi olur",
     remain: (n: number) => (n < 1 ? "1 dk'dan az kaldı" : `${n} dk kaldı`),
@@ -112,6 +114,8 @@ const T = pick({
     ago: (n: number) => `${n} min ago`,
     online: "page open",
     seen: (n: number) => (n < 1 ? "seen just now" : n < 60 ? `seen ${n} min ago` : "not seen for 1 hour"),
+    away: (n: number) => (n < 1 ? "<1 min" : n < 60 ? `${n} min` : "1 h+"),
+    measured: (n: number) => (n < 1 ? "Measured just now" : `Measured ${n} min ago`),
     pushOn: "Notifications on: they'll hear about the call even with the page closed",
     pushOff: "Notifications off: they'll only hear about the call while the page is open",
     remain: (n: number) => (n < 1 ? "under 1 min left" : `${n} min left`),
@@ -183,6 +187,8 @@ const T = pick({
     ago: (n: number) => `vor ${n} Min.`,
     online: "Seite geöffnet",
     seen: (n: number) => (n < 1 ? "gerade eben gesehen" : n < 60 ? `vor ${n} Min. gesehen` : "seit 1 Std. nicht gesehen"),
+    away: (n: number) => (n < 1 ? "<1 Min." : n < 60 ? `${n} Min.` : "1 Std.+"),
+    measured: (n: number) => (n < 1 ? "Gerade gemessen" : `Vor ${n} Min. gemessen`),
     pushOn: "Mitteilungen an: erfährt vom Aufruf auch bei geschlossener Seite",
     pushOff: "Mitteilungen aus: erfährt vom Aufruf nur bei geöffneter Seite",
     remain: (n: number) => (n < 1 ? "unter 1 Min. übrig" : `noch ${n} Min.`),
@@ -254,6 +260,8 @@ const T = pick({
     ago: (n: number) => `${n} мин назад`,
     online: "страница открыта",
     seen: (n: number) => (n < 1 ? "был(а) только что" : n < 60 ? `был(а) ${n} мин назад` : "не появлялся(-ась) больше часа"),
+    away: (n: number) => (n < 1 ? "<1 мин" : n < 60 ? `${n} мин` : "1 ч+"),
+    measured: (n: number) => (n < 1 ? "Измерено только что" : `Измерено ${n} мин назад`),
     pushOn: "Уведомления включены: узнает о вызове, даже если страница закрыта",
     pushOff: "Уведомления выключены: узнает о вызове, только пока страница открыта",
     remain: (n: number) => (n < 1 ? "меньше 1 мин" : `осталось ${n} мин`),
@@ -347,7 +355,12 @@ function Row({ e, wait, skew, children }: { e: Entry; wait?: number | null; skew
           : e.accept && (e.accept.length > 1 || e.accept[0] !== e.size) ? ` · ${T.acceptOk(e.accept.join("/"))}` : ""}
         {e.zone ? <> · <b>{e.zone}</b></> : e.zones && ` · ${e.zones.join("/")}`}
         {e.src === "manual" && ` · ${T.manual}`}
-        {away !== null && <> · <span className={cn(!online && "text-muted-foreground")}>{online ? `🟢 ${T.online}` : T.seen(Math.floor(away / 60000))}</span></>}
+        {/* Kısa: sayfa açıksa 🟢, değilse gri "4 dk"; uzun açıklama üzerine gelince */}
+        {away !== null && <> · {online
+          ? <span title={T.online} aria-label={T.online}>🟢</span>
+          : <span className="text-muted-foreground" title={T.seen(Math.floor(away / 60000))}>{T.away(Math.floor(away / 60000))}</span>}</>}
+        {/* Son paylaşılan konumun sıraya (görevliye) uzaklığı; 2 dk'dan eskiyse gri, ne zaman ölçüldüğü üzerine gelince */}
+        {e.dist && ((m) => <> · <span className={cn(m >= 2 && "text-muted-foreground")} title={T.measured(m)}>📍 {fmtDist(e.dist!.m)}</span></>)(mins(e.dist.at - (skew ?? 0)))}
         {e.notify !== undefined && <> · <span title={e.notify ? T.pushOn : T.pushOff} aria-label={e.notify ? T.pushOn : T.pushOff}>{e.notify ? "🔔" : "🔕"}</span></>}
         {e.note && ` · ${e.note}`}
         {e.calledAt && <> · <span className={cn(late && "font-bold text-destructive")}>{left !== null ? T.remain(left) : T.ago(mins(e.calledAt))}</span></>}

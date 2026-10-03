@@ -93,6 +93,15 @@ assert.match((await ljoin("en", { t: token, size: 99 })).error, /1–8 people/);
 const me = async (id) => (await fetch(`${B}/api/r/${room}/me?id=${id}`)).json();
 assert.equal((await me(c.id)).aheadPeople, 6);
 
+// Mesafe: girişte ve sonra sayfa açıkken gelen konumla; konum değil yalnızca mesafe tutulur
+assert.equal((await me(c.id)).dist.m, 0, "girişteki konum sıranın yerinde");
+const wh = await post(`/api/r/${room}/where`, { id: c.id, lat: spot.lat + 0.001, lng: spot.lng });
+assert.ok(Math.abs(wh.dist.m - 111) <= 2, `~111 m (${wh.dist.m})`);
+assert.equal((await me(c.id)).dist.m, wh.dist.m);
+const ce = (await admin()).entries.find((e) => e.id === c.id);
+assert.deepEqual([ce.dist.m, "lat" in ce.dist, "w" in ce.dist], [wh.dist.m, false, false], "panelde mesafe; konum ve iç alan yok");
+assert.equal((await post(`/api/r/${room}/where`, { id: "yok", ...spot })).error, "Sıra kaydı bulunamadı");
+
 // #1 bildirim açık: çağrılınca push gönderilir (sahte abonelik, gönderim hatası isteği bozmamalı)
 const ec = createECDH("prime256v1"); ec.generateKeys();
 const sub = { endpoint: `https://fcm.googleapis.com/fcm/send/${"x".repeat(40)}`, keys: { p256dh: ec.getPublicKey().toString("base64url"), auth: randomBytes(16).toString("base64url") } };
