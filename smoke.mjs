@@ -340,7 +340,8 @@ assert.ok((await gjoin("cap-device-0000002", spot)).no, "açılınca girilir");
 const hm = (h) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(Date.now() + h * 3600e3);
 // Eski biçim { from, to } her gün aynı saat olarak saklanır
 await put({ hours: { from: hm(2), to: hm(3) } });
-assert.match((await gjoin("cap-device-0000003", spot)).error, /Sıra şu an kapalı\. Yeniden açılış: bugün/);
+// 2 saat sonrası gece yarısını geçiyorsa (22:00'den sonra çalışınca) açılış yarın
+assert.match((await gjoin("cap-device-0000003", spot)).error, new RegExp(`Sıra şu an kapalı\\. Yeniden açılış: ${hm(2) < hm(0) ? "yarın" : "bugün"} ${hm(2)}`));
 assert.equal((await ostat()).open, false);
 assert.deepEqual((await ostat()).opens?.from, hm(2));
 await put({ hours: { from: hm(-1), to: hm(1) } });
