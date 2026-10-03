@@ -6,6 +6,7 @@ import { ErrorText, Page, Title } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Scanner } from "@/components/scanner";
 import { Label } from "@/components/ui/label";
 import { api, catIcon, live, locate, type Me, type Status } from "@/lib/api";
 import { closedText, deskLabel, fmtWait, geoErrors, lang, orList, pick, pl, S, tableLabel } from "@/lib/i18n";
@@ -14,13 +15,67 @@ import { mount } from "@/lib/mount";
 import { cn } from "@/lib/utils";
 
 const q = new URLSearchParams(location.search);
-const ref = q.get("r") ?? "", token = q.get("t");
+// u: işletmenin alt alan adı; uygulama içi okuyucu başka işletmenin QR'ını kendi adresinde açarken verir (bkz. inApp)
+const ref = q.get("r") ?? "", token = q.get("t"), owner = q.get("u") ?? "";
+const base = [owner && `u=${encodeURIComponent(owner)}`, ref && `r=${encodeURIComponent(ref)}`].filter(Boolean);
 let room = "", slot = ""; // açılışta slug/alt alan adından çözülür
 let device = localStorage.getItem("device");
 if (!device) localStorage.setItem("device", device = crypto.randomUUID());
 navigator.serviceWorker?.register("/sw.js");
 const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const standalone = (navigator as any).standalone || matchMedia("(display-mode: standalone)").matches;
+// iPhone'da Paylaş: Safari'de alt araç çubuğunda (yeni sürümlerde ⋯ içinde), Chrome'da ve iPad'de sağ üstte
+const ua = navigator.userAgent, shareAt = /CriOS/.test(ua) || !/iPhone|iPod/.test(ua) ? "top" : /FxiOS|EdgiOS|OPiOS/.test(ua) ? "menu" : "bottom";
+
+// Okunan QR Wait adresini bu uygulamanın adresine çevirir: ana ekran uygulaması kurulduğu alt alan adında kalmalı
+// (başka adrese geçerse tarayıcıda açılır; uygulamanın çerezi ve bildirim izni orada yok). İşletme alt alan adı u ile taşınır.
+const DOMAINS = [location.hostname.split(".").slice(-2).join("."), "qrwait.app", "sirangeldi.com"];
+function inApp(text: string) {
+  const u = URL.parse(text);
+  const d = u && DOMAINS.find((x) => u.hostname === x || u.hostname.endsWith(`.${x}`));
+  if (!u || !d || u.pathname !== "/join" || !u.searchParams.get("t")) return null;
+  const sub = u.hostname.slice(0, -d.length - 1), p = new URLSearchParams(u.search);
+  if (sub && sub !== "www") p.set("u", sub);
+  return `/join?${p}`;
+}
+
+// iPhone'da sayfa ancak kullanıcının dokunduğu anda açılmış bir AudioContext ile ses çalabilir: her dokunuşta hazırlanır
+let audio: AudioContext | null = null;
+const unlockAudio = () => { try { audio ??= new AudioContext(); if (audio.state !== "running") audio.resume(); } catch {} };
+addEventListener("pointerdown", unlockAudio, true);
+addEventListener("touchend", unlockAudio, true);
+function beep() {
+  try {
+    const session = (navigator as any).audioSession;
+    if (session) session.type = "playback"; // sessiz moddayken de çalsın (Safari 16.4+)
+    const a = (audio ??= new AudioContext());
+    a.resume();
+    for (let i = 0; i < 3; i++) {
+      const o = a.createOscillator(), g = a.createGain(), t = a.currentTime + i * 0.6;
+      o.frequency.value = 880; g.gain.value = 0.6;
+      o.connect(g).connect(a.destination);
+      o.start(t); o.stop(t + 0.35);
+    }
+  } catch {}
+}
+
+// Ana ekran uygulamasında tarayıcının "aşağı çekip yenile"si yok: sayfanın tepesinden 80 px çekince yeniden yüklenir
+function usePullRefresh(on: boolean) {
+  const [pull, setPull] = useState(0);
+  useEffect(() => {
+    if (!on) return;
+    let y0: number | null = null, d = 0;
+    const start = (e: TouchEvent) => { y0 = scrollY <= 0 && !document.querySelector("[role=dialog]") ? e.touches[0].clientY : null; d = 0; };
+    const move = (e: TouchEvent) => { if (y0 !== null) setPull((d = Math.max(0, e.touches[0].clientY - y0))); };
+    const end = () => { if (y0 !== null && d > 80) location.reload(); y0 = null; setPull(0); };
+    addEventListener("touchstart", start, { passive: true });
+    addEventListener("touchmove", move, { passive: true });
+    addEventListener("touchend", end);
+    return () => { removeEventListener("touchstart", start); removeEventListener("touchmove", move); removeEventListener("touchend", end); };
+  }, [on]);
+  return pull;
+}
+
 // Android/masaüstü Chrome: ana ekrana ekleme butonla tarayıcının kendi penceresini açar (iPhone'da bu olay yok)
 let installEvt: any = null;
 addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvt = e; dispatchEvent(new Event("installable")); });
@@ -36,6 +91,14 @@ const T = pick({
     guideTitle: "Ana ekrana ekleyin",
     gShare: "Paylaş",
     gShareAlt: "görünmüyorsa ⋯ → Paylaş",
+    gShareChrome: "sağ üstte, adres çubuğunda",
+    gShareMenu: "tarayıcının menüsünde",
+    scan: "📷 QR kodu okut",
+    scanHint: "Sıraya girmek için işletmenin QR kodunu okutun.",
+    scanTitle: "QR kodu okutun",
+    camDenied: "Kamera izni verilmedi. Ayarlar'dan QR Wait'e kamera izni verin.",
+    camFail: "Kamera açılamadı.",
+    notOurs: "Bu bir QR Wait sıra kodu değil.",
     gAdd: "Ana Ekrana Ekle",
     gWebApp: "Web Uygulaması Olarak Aç",
     gConfirm: "Ekle",
@@ -86,6 +149,14 @@ const T = pick({
     guideTitle: "Add to your home screen",
     gShare: "Share",
     gShareAlt: "not visible? ⋯ → Share",
+    gShareChrome: "top right, in the address bar",
+    gShareMenu: "in the browser menu",
+    scan: "📷 Scan QR code",
+    scanHint: "To join a queue, scan the business's QR code.",
+    scanTitle: "Scan the QR code",
+    camDenied: "Camera access was denied. Allow camera access for QR Wait in Settings.",
+    camFail: "The camera couldn't be opened.",
+    notOurs: "This isn't a QR Wait queue code.",
     gAdd: "Add to Home Screen",
     gWebApp: "Open as Web App",
     gConfirm: "Add",
@@ -136,6 +207,14 @@ const T = pick({
     guideTitle: "Zum Home-Bildschirm hinzufügen",
     gShare: "Teilen",
     gShareAlt: "nicht sichtbar? ⋯ → Teilen",
+    gShareChrome: "oben rechts in der Adressleiste",
+    gShareMenu: "im Browsermenü",
+    scan: "📷 QR-Code scannen",
+    scanHint: "Um sich anzustellen, scannen Sie den QR-Code des Betriebs.",
+    scanTitle: "QR-Code scannen",
+    camDenied: "Kein Kamerazugriff. Erlauben Sie QR Wait die Kamera in den Einstellungen.",
+    camFail: "Die Kamera konnte nicht geöffnet werden.",
+    notOurs: "Das ist kein QR-Wait-Warteschlangencode.",
     gAdd: "Zum Home-Bildschirm",
     gWebApp: "Als Web-App öffnen",
     gConfirm: "Hinzufügen",
@@ -186,6 +265,14 @@ const T = pick({
     guideTitle: "Добавьте на экран «Домой»",
     gShare: "Поделиться",
     gShareAlt: "не видно? ⋯ → Поделиться",
+    gShareChrome: "справа вверху, в адресной строке",
+    gShareMenu: "в меню браузера",
+    scan: "📷 Сканировать QR-код",
+    scanHint: "Чтобы встать в очередь, отсканируйте QR-код заведения.",
+    scanTitle: "Отсканируйте QR-код",
+    camDenied: "Нет доступа к камере. Разрешите QR Wait доступ к камере в Настройках.",
+    camFail: "Не удалось открыть камеру.",
+    notOurs: "Это не QR-код очереди QR Wait.",
     gAdd: "На экран «Домой»",
     gWebApp: "Открыть как веб-приложение",
     gConfirm: "Добавить",
@@ -253,10 +340,7 @@ async function enablePush(id: string): Promise<string | null> {
 // place: masa ya da gişe adı; table: masa modunda başlık "Masanız hazır"
 async function alertUser(id: string, place?: string, table = false) {
   navigator.vibrate?.([500, 200, 500, 200, 500]);
-  try {
-    const a = new AudioContext(), o = a.createOscillator();
-    o.connect(a.destination); o.frequency.value = 880; o.start(); o.stop(a.currentTime + 0.8);
-  } catch {}
+  beep();
   if (window.Notification?.permission === "granted") {
     const reg = await navigator.serviceWorker?.ready;
     // push ile aynı tag: ikisi birden gelirse tek bildirim görünür
@@ -265,11 +349,11 @@ async function alertUser(id: string, place?: string, table = false) {
 }
 
 // iPhone'da ana ekrana ekleme sayfadan tetiklenemez (API yok, sayfanın açtığı paylaşım menüsünde de seçenek çıkmaz):
-// Safari'nin ekranlarını taklit eden görsel rehber. Alttaki ok iPhone'da Safari araç çubuğunu gösterir.
+// iPhone'un ekranlarını taklit eden görsel rehber (Safari, Chrome vb.). Ok, tarayıcının Paylaş butonunu gösterir.
 function InstallGuide({ open, onClose }: { open: boolean; onClose: () => void }) {
   const row = "flex items-center gap-2 rounded-lg bg-muted px-3 py-2";
   const steps: ReactNode[] = [
-    <><span className={row}><ShareIcon className="size-5 text-[#007AFF]" />{T.gShare}</span><span className="text-sm text-muted-foreground">{T.gShareAlt}</span></>,
+    <><span className={row}><ShareIcon className="size-5 text-[#007AFF]" />{T.gShare}</span><span className="text-sm text-muted-foreground">{shareAt === "top" ? T.gShareChrome : shareAt === "menu" ? T.gShareMenu : T.gShareAlt}</span></>,
     <span className={row}><SquarePlusIcon className="size-5" />{T.gAdd}</span>,
     <span className="flex flex-wrap items-center gap-2">
       <span className={row}>{T.gWebApp}<span className="ml-1 inline-flex h-5 w-9 items-center justify-end rounded-full bg-[#34C759] p-0.5"><span className="size-4 rounded-full bg-white" /></span></span>
@@ -279,7 +363,7 @@ function InstallGuide({ open, onClose }: { open: boolean; onClose: () => void })
   ];
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="top-6 translate-y-0 gap-4">
+      <DialogContent className={cn("translate-y-0 gap-4", shareAt === "top" ? "top-20" : "top-6")}>
         <DialogTitle className="text-lg">{T.guideTitle}</DialogTitle>
         <ol className="flex flex-col gap-3 text-base">
           {steps.map((x, i) => (
@@ -291,8 +375,10 @@ function InstallGuide({ open, onClose }: { open: boolean; onClose: () => void })
         </ol>
         <Button onClick={onClose}>{T.gotIt}</Button>
       </DialogContent>
-      {open && /iPhone|iPod/.test(navigator.userAgent) && (
-        <div aria-hidden className="pointer-events-none fixed bottom-2 left-1/2 z-[60] -translate-x-1/2 animate-bounce text-4xl">👇</div>
+      {open && shareAt !== "menu" && (
+        <div aria-hidden className={cn("pointer-events-none fixed z-[60] animate-bounce text-4xl", shareAt === "top" ? "top-2 right-3" : "bottom-2 left-1/2 -translate-x-1/2")}>
+          {shareAt === "top" ? "👆" : "👇"}
+        </div>
       )}
     </Dialog>
   );
@@ -313,6 +399,9 @@ function JoinPage() {
   const [iosBtn, setIosBtn] = useState(false); // iPhone Safari: ana ekrana ekleme rehberi
   const [guide, setGuide] = useState(false);
   const [canInstall, setCanInstall] = useState(!!installEvt);
+  const [scan, setScan] = useState(false), [scanNote, setScanNote] = useState("");
+  const [ready, setReady] = useState(false); // ilk durum geldi (okuyucu kartı bilet yüklenmeden görünmesin)
+  const pull = usePullRefresh(standalone);
   const notified = useRef(false), pushShown = useRef(false);
   const due = useRef<number | null>(null); // süreli sırada gelme süresinin bittiği an
   const [, tick] = useState(0);
@@ -346,7 +435,7 @@ function JoinPage() {
   async function startInstall() {
     const id = localStorage.getItem(slot);
     const { code } = await api<{ code: string }>("/api/v/link", {}).catch(() => ({ code: "" }));
-    history.replaceState(null, "", `?${[ref && `r=${ref}`, id && `k=${id}`, code && `l=${code}`].filter(Boolean).join("&")}`);
+    history.replaceState(null, "", `?${[...base, id && `k=${id}`, code && `l=${code}`].filter(Boolean).join("&")}`);
     setGuide(true);
   }
 
@@ -413,7 +502,7 @@ function JoinPage() {
         await api("/api/v/redeem", { code }).catch(() => {});
         localStorage.setItem("linked", "1");
       }
-      return api<{ room: string }>(`/api/resolve?r=${encodeURIComponent(ref)}`);
+      return api<{ room: string }>(`/api/resolve?${base.join("&") || "r="}`);
     })().then(async (r) => {
       room = r.room;
       slot = "ticket:" + room;
@@ -425,8 +514,9 @@ function JoinPage() {
         setSize((n) => Math.min(n, s.maxGroup));
         setAccept((a) => [Math.min(a[0], s.maxGroup)]);
       }).catch(() => {});
-      refresh();
-    }).catch(() => setErr(T.notFound));
+      await refresh();
+      setReady(true);
+    }).catch(() => { setErr(T.notFound); setReady(true); });
   }, []);
 
   // Bilet varken canlı bağlantı: çağrı anında gelir. Bağlantı yoksa 10 sn'de bir yoklanır (arka planda da)
@@ -466,7 +556,7 @@ function JoinPage() {
       const r = await api<{ id: string }>(`/api/r/${room}/join`, { t: token, lat: c?.latitude, lng: c?.longitude, size, accept, zones, device, lang });
       localStorage.setItem(slot, r.id);
       await perm;
-      history.replaceState(null, "", ref ? `?r=${ref}` : location.pathname); // süresi dolacak token'ı adres çubuğundan kaldır
+      history.replaceState(null, "", base.length ? `?${base.join("&")}` : location.pathname); // süresi dolacak token'ı adres çubuğundan kaldır
       await refresh();
     } catch (e: any) { setErr(e.message); }
     setBusy(false);
@@ -571,7 +661,32 @@ function JoinPage() {
       )}
 
       <ErrorText>{err}</ErrorText>
+      {standalone && ready && view === null && (
+        <Card>
+          <CardContent className="flex flex-col gap-3 text-base">
+            <p>{T.scanHint}</p>
+            <Button onClick={() => { setScanNote(""); setScan(true); }}>{T.scan}</Button>
+          </CardContent>
+        </Card>
+      )}
+      <Scanner
+        open={scan}
+        onClose={() => setScan(false)}
+        note={scanNote}
+        text={{ title: T.scanTitle, denied: T.camDenied, fail: T.camFail, cancel: T.cancel }}
+        onCode={(s) => {
+          const to = inApp(s);
+          if (!to) { setScanNote(T.notOurs); return false; }
+          location.href = to;
+          return true;
+        }}
+      />
       <InstallGuide open={guide} onClose={() => setGuide(false)} />
+      {pull > 0 && (
+        <div aria-hidden className="pointer-events-none fixed top-3 left-1/2 z-50 -translate-x-1/2 rounded-full bg-card p-2 shadow" style={{ opacity: Math.min(1, pull / 80) }}>
+          <span className="block text-xl" style={{ transform: `rotate(${pull * 3}deg)` }}>↻</span>
+        </div>
+      )}
       {/* Sırada bekleyen her ziyaretçi olası bir işletme; utm ile Analytics'te hangi sayfadan geldiği görünür */}
       <p className="mt-6 text-center text-sm"><a className="font-medium underline" href={siteUrl("/?utm_source=qrwait&utm_medium=join")}>{T.ownQueue}</a></p>
       <p className="mt-2 text-center text-xs text-muted-foreground"><a className="underline" href={siteUrl("/privacy")}>{LEGAL.privacyShort}</a></p>

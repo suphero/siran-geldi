@@ -60,7 +60,7 @@ const HEADERS = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
   "referrer-policy": "strict-origin-when-cross-origin",
-  "permissions-policy": "geolocation=(self), camera=(), microphone=(), payment=()",
+  "permissions-policy": "geolocation=(self), camera=(self), microphone=(), payment=()", // kamera: ana ekran uygulamasındaki QR okuyucu
   "strict-transport-security": "max-age=31536000; includeSubDomains",
 };
 
