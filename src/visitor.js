@@ -12,13 +12,16 @@ const MAX_ROOMS = 20;
 export const DEVICE_RE = /^[\w-]{16,64}$/;
 
 // Bağlama kodu: cihaz kimliği sunucu anahtarıyla şifrelenir (AES-GCM). Adreste kimlik görünmez, kod üretmek için kayıt
-// tutulmaz (iPhone'da sıra ve durum sayfaları her açılışta kod alır). Anahtar VAPID özel anahtarından türetilir (HKDF),
-// ayrı secret gerekmez. Kod LINK_TTL boyunca geçerli, tek kullanımlık (Visitor.claim).
+// tutulmaz (iPhone'da sıra ve durum sayfaları her açılışta kod alır). Anahtar LINK_SECRET'tan, yoksa VAPID özel
+// anahtarından türetilir (HKDF); üretimde ayrı secret gerekmez, test ortamında VAPID olmadan da çalışır.
+// Kod LINK_TTL boyunca geçerli, tek kullanımlık (Visitor.claim).
 const b64u = (b) => btoa(String.fromCharCode(...b)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 const unb64u = (s) => Uint8Array.from(atob(s.replaceAll("-", "+").replaceAll("_", "/")), (c) => c.charCodeAt(0));
 
+export const linkSecret = (env) => env.LINK_SECRET ?? env.VAPID_PRIVATE_KEY;
+
 async function linkKey(env) {
-  const ikm = await crypto.subtle.importKey("raw", enc(env.VAPID_PRIVATE_KEY), "HKDF", false, ["deriveKey"]);
+  const ikm = await crypto.subtle.importKey("raw", enc(linkSecret(env)), "HKDF", false, ["deriveKey"]);
   return crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: enc("qrwait"), info: enc("device-link") }, ikm,
     { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
 }

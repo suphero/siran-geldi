@@ -27,11 +27,13 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      # Yerel test ortamı: smoke.mjs varsayılan şifresi "test"; VAPID anahtarı yok, push gönderimi atlanır.
+      # Yerel test ortamı: smoke.mjs varsayılan şifresi "test"; VAPID anahtarı yok, push gönderimi atlanır
+      # (cihaz bağlama kodunun anahtarı üretimde VAPID'den türetilir, burada LINK_SECRET).
       # Turnstile'ın her zaman geçen test anahtarları; DEV=1 e-posta bağlantılarını günlüğe yazar (smoke.mjs WRANGLER_LOG'dan okur)
       - run: |
           cat > .dev.vars <<'EOF'
           ADMIN_PASSWORD=test
+          LINK_SECRET=test-link-secret
           DEV=1
           LEMON_TEST=1
           LEMON_WEBHOOK_SECRET=test-webhook-secret

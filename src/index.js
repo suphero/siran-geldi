@@ -5,7 +5,7 @@ import { deskLabel, fail, failed, LANGS, langOf, localize, msg, tableLabel } fro
 import { mail } from "./mail.js";
 import { cleanSub, sendPush } from "./push.js";
 import { enc, hex, randomHex, same, sha256, sign } from "./util.js";
-import { DEVICE_RE, openLink, sealLink, Visitor } from "./visitor.js";
+import { DEVICE_RE, linkSecret, openLink, sealLink, Visitor } from "./visitor.js";
 
 export { Account, Visitor };
 
@@ -1520,14 +1520,14 @@ async function visitorApi(req, env, url, body) {
     // iPhone'da sıra ve durum sayfalarının adresine konan bağlama kodu: ana ekrana nereden eklenirse eklensin kaydedilen
     // adreste olur. Cihazın çerezi yoksa burada verilir (eski sayfalar localStorage'daki kimliği gönderir).
     case "/api/v/link": {
-      if (!env.VAPID_PRIVATE_KEY) return Response.json({ code: null });
+      if (!linkSecret(env)) return Response.json({ code: null });
       const d = device ?? (DEVICE_RE.test(body.device ?? "") ? body.device : crypto.randomUUID());
       const res = Response.json({ code: await sealLink(env, d) });
       return device ? res : withDevice(res, d, url, env);
     }
     // Uygulamanın ilk açılışı: kod tarayıcıdaki cihaz kimliğine çevrilir, uygulamanın çerezine yazılır
     case "/api/v/redeem": {
-      const p = typeof body.code === "string" && body.code.length < 400 && env.VAPID_PRIVATE_KEY && (await openLink(env, body.code));
+      const p = typeof body.code === "string" && body.code.length < 400 && linkSecret(env) && (await openLink(env, body.code));
       return p && (await env.VISITOR.getByName(p.d).claim(p.n)) ? withDevice(Response.json({ ok: true }), p.d, url, env) : Response.json({ ok: false });
     }
     // Bitmemiş biletler, en son girilen sonda; bitenler kayıttan silinir
