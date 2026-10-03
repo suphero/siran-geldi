@@ -21,9 +21,9 @@ const S: Section[] = pick<Section[]>({
     ] },
     { h: "Sıraya giren ziyaretçilerin verileri", ul: [
       <><b>Sıra kaydı:</b> grup büyüklüğü, kabul edilen yer sayıları, sıra numarası, giriş ve çağrılma zamanı, arayüz dili, sıra sayfanızın en son açık olduğu an (görevli, çağrıdan haberiniz olup olamayacağını görsün diye; bildirimlerin açık olup olmadığıyla birlikte gösterilir).</>,
-      <><b>Cihaz kimliği:</b> tarayıcınızda üretilen rastgele bir kimlik; aynı telefonla ikinci numara alınmasını önler. Adınızla ya da telefon numaranızla ilişkili değildir.</>,
+      <><b>Cihaz kimliği:</b> rastgele bir kimlik; aynı telefonla ikinci numara alınmasını önler, ana ekrana eklediğiniz QR Wait'i tarayıcınızla eşleştirir. Adınızla ya da telefon numaranızla ilişkili değildir.</>,
       <><b>Konum:</b> sıra konum kontrolü kullanıyorsa yalnızca sıraya girerken, sıranın alanında ya da görevlinin yakınında olduğunuzu doğrulamak için o anda kullanılır. <b>Konumunuz saklanmaz.</b></>,
-      <><b>Bildirim aboneliği:</b> "sıra size geldi" bildirimine izin verirseniz tarayıcınızın bildirim adresi.</>,
+      <><b>Bildirim aboneliği:</b> "sıra size geldi" bildirimine izin verirseniz tarayıcınızın bildirim adresi. QR Wait'i ana ekrana eklediyseniz bu adres cihaz kimliğinizle de saklanır, böylece sonraki sıralarınızda da bildirim alırsınız; hangi sıralarda bileti olduğunuz da yalnızca uygulamanın açılışta biletinizi gösterebilmesi için tutulur.</>,
       <><b>Görevli notu:</b> görevli sizi elle eklerse yazdığı kısa not.</>,
       <>Ziyaretçilerden ad, telefon numarası ya da e-posta adresi istenmez.</>,
     ] },
@@ -53,13 +53,13 @@ const S: Section[] = pick<Section[]>({
       <>Yurt dışına aktarım KVKK m. 9 kapsamında standart sözleşmeler ya da ilgili istisnalar çerçevesinde yapılır. Verileriniz satılmaz, reklam amacıyla paylaşılmaz.</>,
     ] },
     { h: "Saklama süreleri", ul: [
-      <><b>Sıra kaydı:</b> görevli "geldi" ya da "çıkar" olarak işaretleyene, siz sıradan ayrılana ya da işletme sırayı sıfırlayana kadar; bildirim aboneliği kayıtla birlikte silinir.</>,
+      <><b>Sıra kaydı:</b> görevli "geldi" ya da "çıkar" olarak işaretleyene, siz sıradan ayrılana ya da işletme sırayı sıfırlayana kadar; bildirim aboneliği kayıtla birlikte silinir. Cihaza bağlı bildirim adresi ve bilet listesi 30 gün kullanılmazsa silinir.</>,
       <><b>Hesap:</b> hesap silinene kadar. E-postası 7 gün içinde doğrulanmayan hesaplar otomatik silinir.</>,
       <><b>Doğrulama ve şifre sıfırlama bağlantıları:</b> 3 gün ve 1 saat; kullanılınca silinir.</>,
       <><b>Başarısız giriş sayaçları:</b> en fazla 1 gün. <b>Teknik kayıtlar:</b> hizmet sağlayıcının kayıt süresince, genellikle birkaç gün.</>,
     ] },
     { h: "Çerezler ve tarayıcıda saklanan bilgiler", ul: [
-      <><b>Zorunlu:</b> oturum anahtarı, cihaz kimliği ve sıra numaranız tarayıcının yerel deposunda (localStorage) tutulur; bunlar olmadan hizmet çalışmaz. Dil seçerseniz tercihiniz bir "lang" çerezinde saklanır, böylece işletmelerin adreslerinde de aynı dil açılır.</>,
+      <><b>Zorunlu:</b> oturum anahtarı, cihaz kimliği ve sıra numaranız tarayıcının yerel deposunda (localStorage) tutulur; bunlar olmadan hizmet çalışmaz. Cihaz kimliği ayrıca "d" çerezinde (yalnızca sunucunun okuyabildiği, QR Wait'in tüm adreslerinde geçerli) saklanır. Dil seçerseniz tercihiniz bir "lang" çerezinde saklanır, böylece işletmelerin adreslerinde de aynı dil açılır.</>,
       <><b>Analitik (isteğe bağlı):</b> Google Analytics çerezleri yalnızca çerez bildiriminde izin verirseniz kullanılır. Kararınızı <Reset>buradan değiştirebilirsiniz</Reset>.</>,
     ] },
     { h: "Haklarınız", p: [
@@ -77,9 +77,9 @@ const S: Section[] = pick<Section[]>({
     ] },
     { h: "Data of visitors joining a queue", ul: [
       <><b>Queue entry:</b> group size, accepted numbers of places, queue number, time of joining and being called, interface language, the last time your queue page was open (shown to the attendant together with whether notifications are on, so they can tell whether you'll hear about the call).</>,
-      <><b>Device ID:</b> a random identifier generated in your browser to prevent a second number from the same phone. It is not linked to your name or phone number.</>,
+      <><b>Device ID:</b> a random identifier that prevents a second number from the same phone and pairs QR Wait on your home screen with your browser. It is not linked to your name or phone number.</>,
       <><b>Location:</b> if the queue uses a location check, used only at the moment you join, to check that you are at the queue's location or near the attendant. <b>Your location is not stored.</b></>,
-      <><b>Notification subscription:</b> your browser's push address, if you allow "it's your turn" notifications.</>,
+      <><b>Notification subscription:</b> your browser's push address, if you allow "it's your turn" notifications. If you added QR Wait to your home screen, this address is also stored with your device ID so you get notified in later queues too; which queues you have a number in is kept only so the app can show your number when opened.</>,
       <><b>Attendant note:</b> a short note if the attendant adds you manually.</>,
       <>Visitors are never asked for their name, phone number or email address.</>,
     ] },
@@ -109,13 +109,13 @@ const S: Section[] = pick<Section[]>({
       <>International transfers rely on standard contractual clauses or applicable exceptions (KVKK Art. 9; GDPR Chapter V). Your data is never sold or shared for advertising.</>,
     ] },
     { h: "Retention", ul: [
-      <><b>Queue entry:</b> until the attendant marks you as arrived or removes you, you leave the queue, or the business resets the queue; the push subscription is deleted with it.</>,
+      <><b>Queue entry:</b> until the attendant marks you as arrived or removes you, you leave the queue, or the business resets the queue; the push subscription is deleted with it. The push address and ticket list linked to your device are deleted after 30 days without use.</>,
       <><b>Account:</b> until the account is deleted. Accounts whose email isn't verified within 7 days are deleted automatically.</>,
       <><b>Verification and password reset links:</b> 3 days and 1 hour; deleted once used.</>,
       <><b>Failed login counters:</b> at most 1 day. <b>Technical logs:</b> for the provider's log period, usually a few days.</>,
     ] },
     { h: "Cookies and browser storage", ul: [
-      <><b>Essential:</b> your session key, device ID and queue number are kept in your browser's local storage; the service can't work without them. If you choose a language, it's kept in a "lang" cookie so businesses' addresses open in the same language.</>,
+      <><b>Essential:</b> your session key, device ID and queue number are kept in your browser's local storage; the service can't work without them. The device ID is also kept in a "d" cookie (readable only by the server, valid on all QR Wait addresses). If you choose a language, it's kept in a "lang" cookie so businesses' addresses open in the same language.</>,
       <><b>Analytics (optional):</b> Google Analytics cookies are used only if you accept them in the cookie notice. You can <Reset>change your choice here</Reset>.</>,
     ] },
     { h: "Your rights", p: [
@@ -133,9 +133,9 @@ const S: Section[] = pick<Section[]>({
     ] },
     { h: "Daten von Besuchern einer Warteschlange", ul: [
       <><b>Eintrag:</b> Gruppengröße, akzeptierte Platzanzahlen, Nummer, Zeitpunkt des Eintritts und des Aufrufs, Sprache, der Zeitpunkt, zu dem Ihre Warteschlangenseite zuletzt geöffnet war (wird dem Personal zusammen mit dem Mitteilungsstatus angezeigt, damit es sieht, ob Sie vom Aufruf erfahren).</>,
-      <><b>Geräte-ID:</b> eine in Ihrem Browser erzeugte Zufallskennung, die eine zweite Nummer vom selben Telefon verhindert. Sie ist nicht mit Ihrem Namen oder Ihrer Telefonnummer verknüpft.</>,
+      <><b>Geräte-ID:</b> eine Zufallskennung, die eine zweite Nummer vom selben Telefon verhindert und QR Wait auf Ihrem Home-Bildschirm mit Ihrem Browser verknüpft. Sie ist nicht mit Ihrem Namen oder Ihrer Telefonnummer verknüpft.</>,
       <><b>Standort:</b> wird, falls die Warteschlange eine Standortprüfung nutzt, nur beim Eintritt verwendet, um zu prüfen, dass Sie am Ort der Warteschlange oder in der Nähe des Personals sind. <b>Ihr Standort wird nicht gespeichert.</b></>,
-      <><b>Benachrichtigungsabo:</b> die Push-Adresse Ihres Browsers, wenn Sie „Sie sind dran“-Benachrichtigungen erlauben.</>,
+      <><b>Benachrichtigungsabo:</b> die Push-Adresse Ihres Browsers, wenn Sie „Sie sind dran“-Benachrichtigungen erlauben. Haben Sie QR Wait zum Home-Bildschirm hinzugefügt, wird diese Adresse auch mit Ihrer Geräte-ID gespeichert, damit Sie auch in späteren Warteschlangen benachrichtigt werden; in welchen Warteschlangen Sie eine Nummer haben, wird nur gespeichert, damit die App beim Öffnen Ihre Nummer zeigen kann.</>,
       <><b>Notiz des Personals:</b> eine kurze Notiz, wenn das Personal Sie manuell hinzufügt.</>,
       <>Besucher werden nie nach Name, Telefonnummer oder E-Mail-Adresse gefragt.</>,
     ] },
@@ -165,13 +165,13 @@ const S: Section[] = pick<Section[]>({
       <>Übermittlungen in Drittländer stützen sich auf Standardvertragsklauseln oder anwendbare Ausnahmen (KVKK Art. 9; DSGVO Kapitel V). Ihre Daten werden nie verkauft oder für Werbung weitergegeben.</>,
     ] },
     { h: "Speicherdauer", ul: [
-      <><b>Eintrag:</b> bis das Personal Sie als angekommen markiert oder entfernt, Sie die Warteschlange verlassen oder der Betrieb sie zurücksetzt; das Benachrichtigungsabo wird mit gelöscht.</>,
+      <><b>Eintrag:</b> bis das Personal Sie als angekommen markiert oder entfernt, Sie die Warteschlange verlassen oder der Betrieb sie zurücksetzt; das Benachrichtigungsabo wird mit gelöscht. Die mit Ihrem Gerät verknüpfte Push-Adresse und Nummernliste werden nach 30 Tagen ohne Nutzung gelöscht.</>,
       <><b>Konto:</b> bis zur Löschung. Konten, deren E-Mail nicht innerhalb von 7 Tagen bestätigt wird, werden automatisch gelöscht.</>,
       <><b>Bestätigungs- und Zurücksetzungslinks:</b> 3 Tage bzw. 1 Stunde; nach Nutzung gelöscht.</>,
       <><b>Zähler fehlgeschlagener Anmeldungen:</b> höchstens 1 Tag. <b>Technische Protokolle:</b> für die Protokolldauer des Anbieters, meist einige Tage.</>,
     ] },
     { h: "Cookies und Browserspeicher", ul: [
-      <><b>Notwendig:</b> Sitzungsschlüssel, Geräte-ID und Ihre Nummer werden im lokalen Speicher des Browsers gehalten; ohne sie funktioniert der Dienst nicht. Wählen Sie eine Sprache, wird sie in einem „lang“-Cookie gespeichert, damit auch die Adressen der Betriebe in dieser Sprache öffnen.</>,
+      <><b>Notwendig:</b> Sitzungsschlüssel, Geräte-ID und Ihre Nummer werden im lokalen Speicher des Browsers gehalten; ohne sie funktioniert der Dienst nicht. Die Geräte-ID wird außerdem in einem „d“-Cookie gespeichert (nur vom Server lesbar, auf allen QR-Wait-Adressen gültig). Wählen Sie eine Sprache, wird sie in einem „lang“-Cookie gespeichert, damit auch die Adressen der Betriebe in dieser Sprache öffnen.</>,
       <><b>Analyse (optional):</b> Google-Analytics-Cookies werden nur verwendet, wenn Sie im Cookie-Hinweis zustimmen. Sie können Ihre <Reset>Entscheidung hier ändern</Reset>.</>,
     ] },
     { h: "Ihre Rechte", p: [
@@ -189,9 +189,9 @@ const S: Section[] = pick<Section[]>({
     ] },
     { h: "Данные посетителей очереди", ul: [
       <><b>Запись в очереди:</b> размер группы, подходящее количество мест, номер, время записи и вызова, язык интерфейса, время, когда страница очереди была открыта в последний раз (показывается сотруднику вместе с тем, включены ли уведомления, чтобы он видел, узнаете ли вы о вызове).</>,
-      <><b>Идентификатор устройства:</b> случайный идентификатор, созданный в вашем браузере, чтобы с одного телефона нельзя было взять второй номер. Он не связан с вашим именем или номером телефона.</>,
+      <><b>Идентификатор устройства:</b> случайный идентификатор, чтобы с одного телефона нельзя было взять второй номер и чтобы связать QR Wait на экране «Домой» с вашим браузером. Он не связан с вашим именем или номером телефона.</>,
       <><b>Местоположение:</b> если очередь проверяет местоположение, используется только в момент записи, чтобы проверить, что вы находитесь у очереди или рядом с сотрудником. <b>Местоположение не сохраняется.</b></>,
-      <><b>Подписка на уведомления:</b> push-адрес браузера, если вы разрешили уведомления «ваша очередь».</>,
+      <><b>Подписка на уведомления:</b> push-адрес браузера, если вы разрешили уведомления «ваша очередь». Если вы добавили QR Wait на экран «Домой», этот адрес также хранится вместе с идентификатором устройства, чтобы уведомления приходили и в следующих очередях; список очередей, где у вас есть номер, хранится только для того, чтобы приложение при открытии показывало ваш номер.</>,
       <><b>Заметка сотрудника:</b> короткая заметка, если сотрудник добавил вас вручную.</>,
       <>У посетителей не запрашиваются имя, номер телефона или адрес электронной почты.</>,
     ] },
@@ -221,13 +221,13 @@ const S: Section[] = pick<Section[]>({
       <>Трансграничная передача осуществляется на основе стандартных договорных условий или применимых исключений (KVKK ст. 9; GDPR глава V). Ваши данные не продаются и не передаются для рекламы.</>,
     ] },
     { h: "Сроки хранения", ul: [
-      <><b>Запись в очереди:</b> пока сотрудник не отметит, что вы пришли, или не удалит вас, пока вы не покинете очередь или предприятие её не сбросит; подписка на уведомления удаляется вместе с записью.</>,
+      <><b>Запись в очереди:</b> пока сотрудник не отметит, что вы пришли, или не удалит вас, пока вы не покинете очередь или предприятие её не сбросит; подписка на уведомления удаляется вместе с записью. Связанные с устройством push-адрес и список номеров удаляются, если не использовались 30 дней.</>,
       <><b>Учётная запись:</b> до удаления. Учётные записи, почта которых не подтверждена за 7 дней, удаляются автоматически.</>,
       <><b>Ссылки подтверждения и сброса пароля:</b> 3 дня и 1 час; удаляются после использования.</>,
       <><b>Счётчики неудачных входов:</b> не более 1 дня. <b>Технические журналы:</b> в течение срока хранения у поставщика, обычно несколько дней.</>,
     ] },
     { h: "Cookie и хранилище браузера", ul: [
-      <><b>Необходимые:</b> ключ сеанса, идентификатор устройства и ваш номер хранятся в локальном хранилище браузера; без них сервис не работает. Если вы выберете язык, он сохраняется в файле cookie «lang», чтобы адреса заведений открывались на том же языке.</>,
+      <><b>Необходимые:</b> ключ сеанса, идентификатор устройства и ваш номер хранятся в локальном хранилище браузера; без них сервис не работает. Идентификатор устройства также хранится в файле cookie «d» (его может прочитать только сервер, действует на всех адресах QR Wait). Если вы выберете язык, он сохраняется в файле cookie «lang», чтобы адреса заведений открывались на том же языке.</>,
       <><b>Аналитика (по желанию):</b> cookie Google Analytics используются, только если вы согласились в уведомлении о cookie. <Reset>Изменить выбор</Reset>.</>,
     ] },
     { h: "Ваши права", p: [

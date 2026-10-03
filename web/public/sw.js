@@ -8,11 +8,15 @@ self.addEventListener("push", (e) => {
   }));
 });
 
-// Bildirime dokununca açık sekmeye geç, yoksa sıra sayfasını aç
+// Bildirime dokununca açık sıra sayfasına geç (başka sıradaysa bildirimin sırasına götür), yoksa sıra sayfasını aç
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  e.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+  const url = new URL(e.notification.data?.url ?? "/", self.location.origin);
+  e.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (list) => {
     const open = list.find((c) => new URL(c.url).pathname === "/join");
-    return open ? open.focus() : clients.openWindow(e.notification.data?.url ?? "/");
+    if (!open) return clients.openWindow(url.href);
+    const r = new URL(open.url).searchParams.get("r"), want = url.searchParams.get("r");
+    const c = await open.focus();
+    if (url.pathname === "/join" && want && r !== want) await c.navigate(url.href).catch(() => {});
   }));
 });

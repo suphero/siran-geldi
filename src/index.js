@@ -5,8 +5,9 @@ import { deskLabel, fail, failed, LANGS, langOf, localize, msg, tableLabel } fro
 import { mail } from "./mail.js";
 import { cleanSub, sendPush } from "./push.js";
 import { enc, hex, randomHex, same, sha256, sign } from "./util.js";
+import { CODE_RE, DEVICE_RE, Visitor } from "./visitor.js";
 
-export { Account };
+export { Account, Visitor };
 
 const TTLS = [60, 90, 180, 300]; // seçilebilir QR geçerlilik süreleri (sn); görevli ekranı süre/4'te bir yeni kod gösterir
 const MAX_GROUP = 8; // varsayılan en büyük grup
@@ -383,8 +384,8 @@ export class Room extends DurableObject {
     return `${ts}.${await sign(s.key, ts)}`;
   }
 
-  // lang: ziyaretçinin dili; "sıra size geldi" push bildirimi bu dilde gider
-  async join({ t, lat, lng, size, accept, zones, device, lang }) {
+  // lang: ziyaretçinin dili; "sıra size geldi" push bildirimi bu dilde gider. room: bu odanın id'si (Worker verir)
+  async join({ t, lat, lng, size, accept, zones, device, lang, room }) {
     lang = langOf(lang);
     const s = this.need(), c = conf(s);
     const [ts, sig] = String(t).split(".");
@@ -415,6 +416,12 @@ export class Room extends DurableObject {
       e = await this.ticket(size, accept, "qr", device, "", lang, zones).catch((err) => {
         throw failed(err, "quota") || failed(err, "suspended") ? fail("closed") : err;
       });
+      s.id ??= room; // bildirimdeki bağlantı oda id'siyle: başka işletmenin alt alan adına kurulu uygulamada da açılır
+      // Cihazda (ana ekran uygulamasında) bildirime izin verildiyse abonelik bu bilete de bağlanır
+      try {
+        const sub = await this.env.VISITOR.getByName(device).joined(room, e.id);
+        if (sub && !e.push) e.push = sub;
+      } catch (err) { console.error("visitor", err.message); }
     }
     e.seen = Date.now();
     this.fill(); // boş yer / bekleyen masa varsa hemen çağrılır
@@ -491,11 +498,13 @@ export class Room extends DurableObject {
   }
 
   // Sayfa kapalıyken / ekran kilitliyken haber verebilmek için tarayıcının push aboneliği
-  async subscribe(id, sub) {
+  // device: çerezdeki cihaz kimliği; biletin cihazıysa abonelik cihaza da kaydedilir, sonraki biletlere kendiliğinden bağlanır
+  async subscribe(id, sub, device) {
     const e = this.need().entries.find((x) => x.id === id);
     if (!e) throw fail("entryNotFound");
     e.push = cleanSub(sub);
     await this.save();
+    if (device && e.device === device) await this.env.VISITOR.getByName(device).subscribe(e.push);
     return { ok: true };
   }
 
@@ -508,7 +517,7 @@ export class Room extends DurableObject {
     this.lost = [];
     this.soon = [];
     if (!(list.length || lost.length || soon.length) || !this.env.VAPID_PRIVATE_KEY) return;
-    const s = this.s, url = s.slug ? `/join?r=${s.slug}` : "/";
+    const s = this.s, url = s.id ? `/join?r=${s.id}` : s.slug ? `/join?r=${s.slug}` : "/";
     let dead = false;
     await Promise.all([...list.map((e) => [e, false]), ...lost.map((e) => [e, true]), ...soon.map((e) => [e, "soon"])].map(async ([e, gone]) => {
       const note = gone === "soon"
@@ -523,7 +532,10 @@ export class Room extends DurableObject {
         };
       try {
         // Düşen kaydın aboneliği zaten silindi; yalnızca sıradakilerin geçersiz aboneliği temizlenir
-        if (!(await sendPush(e.push, note, this.env)) && gone !== true) { delete e.push; dead = true; }
+        if (!(await sendPush(e.push, note, this.env))) {
+          if (e.device) await this.env.VISITOR.getByName(e.device).unsubscribe(e.push.endpoint);
+          if (gone !== true) { delete e.push; dead = true; }
+        }
       } catch (err) { console.error("push", err.message); }
     }));
     if (dead) await this.save();
@@ -1492,6 +1504,45 @@ async function page(req, env, url) {
   return env.ASSETS.fetch(new Request(new URL(`/status${url.search}`, url), req));
 }
 
+// Ziyaretçi cihazı: sunucunun koyduğu HttpOnly "d" çerezi, ana alan adı ve tüm alt alan adlarında (işletme adresleri) geçerli.
+// Sunucunun koyduğu çerez Safari'de 7 güne kısılmaz. Çerezsiz eski sayfalar localStorage'daki kimliği gönderir.
+const deviceOf = (req) => req.headers.get("cookie")?.match(/(?:^|;\s*)d=([\w-]{16,64})(?:;|$)/)?.[1] ?? null;
+function withDevice(res, device, url, env) {
+  const domain = env.BASE_DOMAIN && url.hostname.endsWith(env.BASE_DOMAIN) ? `; Domain=${env.BASE_DOMAIN}` : "";
+  res.headers.append("set-cookie", `d=${device}; Path=/; Max-Age=34560000; HttpOnly; SameSite=Lax${url.protocol === "https:" ? "; Secure" : ""}${domain}`);
+  return res;
+}
+
+// Ana ekran uygulamasıyla Safari'yi bağlama ve uygulamanın aktif biletleri (src/visitor.js)
+async function visitorApi(req, env, url, body) {
+  const device = deviceOf(req);
+  switch (url.pathname) {
+    // Ana ekrana eklenecek adrese konan tek kullanımlık kod; cihaz kimliği adreste görünmez
+    case "/api/v/link": {
+      if (!device) throw fail("device");
+      await limit(env, "JOIN_LIMIT", `link:${ip(req)}`);
+      const code = randomHex(16);
+      await env.VISITOR.getByName(`l:${code}`).hold(device);
+      return Response.json({ code });
+    }
+    // Uygulamanın ilk açılışı: kod Safari'deki cihaz kimliğine çevrilir, uygulamanın çerezine yazılır
+    case "/api/v/redeem": {
+      const d = CODE_RE.test(body.code ?? "") && (await env.VISITOR.getByName(`l:${body.code}`).redeem());
+      return d && DEVICE_RE.test(d) ? withDevice(Response.json({ ok: true }), d, url, env) : Response.json({ ok: false });
+    }
+    // Bitmemiş biletler, en son girilen sonda; bitenler kayıttan silinir
+    case "/api/v/tickets": {
+      if (!device) return Response.json([]);
+      const v = env.VISITOR.getByName(device), list = await v.tickets();
+      const live = await Promise.all(list.map((t) => env.ROOM.getByName(t.room).view(t.id).then((x) => x.no !== undefined, () => false)));
+      const gone = list.filter((_, i) => !live[i]).map((t) => t.room);
+      if (gone.length) await v.forget(gone);
+      return Response.json(list.filter((_, i) => live[i]));
+    }
+  }
+  return null;
+}
+
 async function handle(req, env) {
   const url = new URL(req.url), lang = langOf(req.headers.get("x-lang")); // hata mesajlarının dili (web/src/lib/api.ts gönderir)
   try {
@@ -1514,6 +1565,10 @@ async function handle(req, env) {
     }
     if (url.pathname === "/api/rooms") return await publicRooms(req, env, url, reg);
     if (url.pathname === "/api/vapid") return Response.json({ key: env.VAPID_PUBLIC_KEY ?? null });
+    if (url.pathname.startsWith("/api/v/")) {
+      const res = await visitorApi(req, env, url, body);
+      if (res) return res;
+    }
     // Hesap açma formu ve fiyatlar: Turnstile site anahtarı (gizli değil), ücretsiz bilet sayısı, paketler
     if (url.pathname === "/api/config") return Response.json({ turnstile: env.TURNSTILE_SITE_KEY ?? "", free: FREE, packages: packages(env) });
     if (url.pathname === "/api/resolve") {
@@ -1529,13 +1584,16 @@ async function handle(req, env) {
     if (!m) return new Response("Not found", { status: 404 });
     const room = env.ROOM.getByName(m[1]);
     switch (m[2]) {
-      case "join":
+      case "join": {
         // Her bilet sıra sahibinin hakkından düştüğü için rastgele cihaz kimliğiyle toplu girişi IP başına sınırlar
         await limit(env, "JOIN_LIMIT", `${m[1]}:${ip(req)}`);
-        return Response.json(await room.join(body));
+        const known = deviceOf(req), device = known ?? (DEVICE_RE.test(body.device ?? "") ? body.device : crypto.randomUUID());
+        const res = Response.json(await room.join({ ...body, device, room: m[1] }));
+        return known ? res : withDevice(res, device, url, env);
+      }
       case "me": return Response.json(await room.me(url.searchParams.get("id"), req.headers.get("x-lang"), url.searchParams.get("hidden") === "1"));
       case "leave": return Response.json(await room.leave(body.id));
-      case "push": return Response.json(await room.subscribe(body.id, body.sub));
+      case "push": return Response.json(await room.subscribe(body.id, body.sub, deviceOf(req)));
       case "admin": return Response.json(await room.admin(req.headers.get("x-key"), body));
       case "status": return Response.json(await room.status());
     }

@@ -1,9 +1,11 @@
+import { ShareIcon, SquarePlusIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useConfirm } from "@/components/confirm";
 import { AcceptPicker, SizeSelect, ZonePicker } from "@/components/group";
 import { ErrorText, Page, Title } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { api, catIcon, live, locate, type Me, type Status } from "@/lib/api";
 import { closedText, deskLabel, fmtWait, geoErrors, lang, orList, pick, pl, S, tableLabel } from "@/lib/i18n";
@@ -19,13 +21,26 @@ if (!device) localStorage.setItem("device", device = crypto.randomUUID());
 navigator.serviceWorker?.register("/sw.js");
 const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const standalone = (navigator as any).standalone || matchMedia("(display-mode: standalone)").matches;
+// Android/masaüstü Chrome: ana ekrana ekleme butonla tarayıcının kendi penceresini açar (iPhone'da bu olay yok)
+let installEvt: any = null;
+addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvt = e; dispatchEvent(new Event("installable")); });
 
 const T = pick({
   tr: {
     queue: "Sıra",
     ownQueue: "Siz de sıra mı yönetiyorsunuz? QR Wait'i ücretsiz kurun →",
     keepOpen: "Bu sayfayı açık tutun. Sıra size geldiğinde ekran yeşile döner ve telefon titrer.",
-    iosHint: <><b>Ekran kilitliyken de haber almak için:</b> Safari'de Paylaş <b>⎋</b> → <b>Ana Ekrana Ekle</b>'ye dokunun, sonra ana ekrandaki <b>QR Wait</b>'i açıp bildirimlere izin verin. Eklerken <b>Web Uygulaması Olarak Aç</b> seçeneği açık olmalı.</>,
+    iosHint: "Ekran kilitliyken de haber almak için QR Wait'i bir kez ana ekrana ekleyin.",
+    notifyMe: "🔔 Sıra gelince haber al",
+    install: "📲 Ana ekrana ekle",
+    guideTitle: "Ana ekrana ekleyin",
+    gShare: "Paylaş",
+    gShareAlt: "görünmüyorsa ⋯ → Paylaş",
+    gAdd: "Ana Ekrana Ekle",
+    gWebApp: "Web Uygulaması Olarak Aç",
+    gConfirm: "Ekle",
+    gOpen: "Ana ekrandaki QR Wait'i açın",
+    gotIt: "Tamam",
     pushOn: "🔔 Bildirimler açık. Sayfayı kapatsanız veya ekranı kilitleseniz de sıranız gelince haber vereceğiz.",
     pushDenied: "Bildirimler kapalı. Bu sayfayı açık tutun ya da tarayıcı ayarlarından bu siteye bildirim izni verin.",
     pushNo: "Bu cihazda bildirim desteklenmiyor (iPhone'da iOS 16.4 veya üstü gerekir). Sıra size gelince haber alabilmek için bu sayfayı açık tutun.",
@@ -65,7 +80,17 @@ const T = pick({
     queue: "Queue",
     ownQueue: "Running a queue? Set up QR Wait for free →",
     keepOpen: "Keep this page open. When it's your turn, the screen turns green and your phone vibrates.",
-    iosHint: <><b>To get notified even when the screen is locked:</b> in Safari tap Share <b>⎋</b> → <b>Add to Home Screen</b>, then open <b>QR Wait</b> from your home screen and allow notifications. <b>Open as Web App</b> must be on when adding.</>,
+    iosHint: "To get notified even when the screen is locked, add QR Wait to your home screen once.",
+    notifyMe: "🔔 Notify me when it's my turn",
+    install: "📲 Add to home screen",
+    guideTitle: "Add to your home screen",
+    gShare: "Share",
+    gShareAlt: "not visible? ⋯ → Share",
+    gAdd: "Add to Home Screen",
+    gWebApp: "Open as Web App",
+    gConfirm: "Add",
+    gOpen: "Open QR Wait from your home screen",
+    gotIt: "Got it",
     pushOn: "🔔 Notifications are on. We'll let you know when it's your turn, even if you close this page or lock the screen.",
     pushDenied: "Notifications are off. Keep this page open, or allow notifications for this site in your browser settings.",
     pushNo: "Notifications aren't supported on this device (iPhone needs iOS 16.4 or later). Keep this page open so you know when it's your turn.",
@@ -105,7 +130,17 @@ const T = pick({
     queue: "Warteschlange",
     ownQueue: "Sie verwalten eine Warteschlange? QR Wait kostenlos einrichten →",
     keepOpen: "Lassen Sie diese Seite geöffnet. Wenn Sie an der Reihe sind, wird der Bildschirm grün und Ihr Telefon vibriert.",
-    iosHint: <><b>Um auch bei gesperrtem Bildschirm benachrichtigt zu werden:</b> Tippen Sie in Safari auf Teilen <b>⎋</b> → <b>Zum Home-Bildschirm</b>, öffnen Sie dann <b>QR Wait</b> vom Home-Bildschirm und erlauben Sie Mitteilungen. Beim Hinzufügen muss <b>Als Web-App öffnen</b> aktiviert sein.</>,
+    iosHint: "Um auch bei gesperrtem Bildschirm benachrichtigt zu werden, fügen Sie QR Wait einmal zum Home-Bildschirm hinzu.",
+    notifyMe: "🔔 Benachrichtigen, wenn ich dran bin",
+    install: "📲 Zum Home-Bildschirm",
+    guideTitle: "Zum Home-Bildschirm hinzufügen",
+    gShare: "Teilen",
+    gShareAlt: "nicht sichtbar? ⋯ → Teilen",
+    gAdd: "Zum Home-Bildschirm",
+    gWebApp: "Als Web-App öffnen",
+    gConfirm: "Hinzufügen",
+    gOpen: "QR Wait auf dem Home-Bildschirm öffnen",
+    gotIt: "OK",
     pushOn: "🔔 Benachrichtigungen sind aktiv. Wir melden uns, wenn Sie an der Reihe sind – auch wenn Sie die Seite schließen oder den Bildschirm sperren.",
     pushDenied: "Benachrichtigungen sind deaktiviert. Lassen Sie diese Seite geöffnet oder erlauben Sie Benachrichtigungen für diese Seite in den Browsereinstellungen.",
     pushNo: "Benachrichtigungen werden auf diesem Gerät nicht unterstützt (iPhone benötigt iOS 16.4 oder neuer). Lassen Sie diese Seite geöffnet, damit Sie erfahren, wann Sie an der Reihe sind.",
@@ -145,7 +180,17 @@ const T = pick({
     queue: "Очередь",
     ownQueue: "Управляете очередью? Подключите QR Wait бесплатно →",
     keepOpen: "Не закрывайте эту страницу. Когда подойдёт ваша очередь, экран станет зелёным, а телефон завибрирует.",
-    iosHint: <><b>Чтобы получать уведомления и при заблокированном экране:</b> в Safari нажмите «Поделиться» <b>⎋</b> → <b>«На экран „Домой“»</b>, затем откройте <b>QR Wait</b> с экрана «Домой» и разрешите уведомления. При добавлении должен быть включён параметр <b>«Открыть как веб-приложение»</b>.</>,
+    iosHint: "Чтобы получать уведомления и при заблокированном экране, один раз добавьте QR Wait на экран «Домой».",
+    notifyMe: "🔔 Сообщить, когда подойдёт очередь",
+    install: "📲 На экран «Домой»",
+    guideTitle: "Добавьте на экран «Домой»",
+    gShare: "Поделиться",
+    gShareAlt: "не видно? ⋯ → Поделиться",
+    gAdd: "На экран «Домой»",
+    gWebApp: "Открыть как веб-приложение",
+    gConfirm: "Добавить",
+    gOpen: "Откройте QR Wait с экрана «Домой»",
+    gotIt: "Понятно",
     pushOn: "🔔 Уведомления включены. Мы сообщим, когда подойдёт ваша очередь, даже если вы закроете страницу или заблокируете экран.",
     pushDenied: "Уведомления отключены. Не закрывайте эту страницу или разрешите уведомления для этого сайта в настройках браузера.",
     pushNo: "Уведомления не поддерживаются на этом устройстве (на iPhone нужна iOS 16.4 или новее). Не закрывайте эту страницу, чтобы узнать, когда подойдёт ваша очередь.",
@@ -219,6 +264,40 @@ async function alertUser(id: string, place?: string, table = false) {
   }
 }
 
+// iPhone'da ana ekrana ekleme sayfadan tetiklenemez (API yok, sayfanın açtığı paylaşım menüsünde de seçenek çıkmaz):
+// Safari'nin ekranlarını taklit eden görsel rehber. Alttaki ok iPhone'da Safari araç çubuğunu gösterir.
+function InstallGuide({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const row = "flex items-center gap-2 rounded-lg bg-muted px-3 py-2";
+  const steps: ReactNode[] = [
+    <><span className={row}><ShareIcon className="size-5 text-[#007AFF]" />{T.gShare}</span><span className="text-sm text-muted-foreground">{T.gShareAlt}</span></>,
+    <span className={row}><SquarePlusIcon className="size-5" />{T.gAdd}</span>,
+    <span className="flex flex-wrap items-center gap-2">
+      <span className={row}>{T.gWebApp}<span className="ml-1 inline-flex h-5 w-9 items-center justify-end rounded-full bg-[#34C759] p-0.5"><span className="size-4 rounded-full bg-white" /></span></span>
+      → <b className="text-[#007AFF]">{T.gConfirm}</b>
+    </span>,
+    <span className="flex items-center gap-2"><img src="/icons/icon-192.png" alt="" className="size-9 rounded-lg" />{T.gOpen}</span>,
+  ];
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="top-6 translate-y-0 gap-4">
+        <DialogTitle className="text-lg">{T.guideTitle}</DialogTitle>
+        <ol className="flex flex-col gap-3 text-base">
+          {steps.map((x, i) => (
+            <li key={i} className="flex flex-wrap items-center gap-3">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">{i + 1}</span>
+              {x}
+            </li>
+          ))}
+        </ol>
+        <Button onClick={onClose}>{T.gotIt}</Button>
+      </DialogContent>
+      {open && /iPhone|iPod/.test(navigator.userAgent) && (
+        <div aria-hidden className="pointer-events-none fixed bottom-2 left-1/2 z-[60] -translate-x-1/2 animate-bounce text-4xl">👇</div>
+      )}
+    </Dialog>
+  );
+}
+
 function JoinPage() {
   const confirm = useConfirm();
   const [view, setView] = useState<"join" | "wait" | null>(null);
@@ -231,6 +310,9 @@ function JoinPage() {
   const [err, setErr] = useState("");
   const [hint, setHint] = useState<ReactNode>(T.keepOpen);
   const [pushBtn, setPushBtn] = useState(false);
+  const [iosBtn, setIosBtn] = useState(false); // iPhone Safari: ana ekrana ekleme rehberi
+  const [guide, setGuide] = useState(false);
+  const [canInstall, setCanInstall] = useState(!!installEvt);
   const notified = useRef(false), pushShown = useRef(false);
   const due = useRef<number | null>(null); // süreli sırada gelme süresinin bittiği an
   const [, tick] = useState(0);
@@ -242,9 +324,8 @@ function JoinPage() {
     if (!window.PushManager || !window.Notification) {
       if (standalone) return setHint(T.pushNo); // ana ekran uygulamasında da yoksa iOS sürümü eski
       if (!isIOS) return;
-      // Ana ekrandaki uygulama Safari'den ayrı depolama kullanır: bilet adres üzerinden taşınır (ana ekrana eklerken o anki adres kaydedilir)
-      history.replaceState(null, "", `?${ref ? `r=${ref}&` : ""}k=${id}`);
       setHint(T.iosHint);
+      setIosBtn(true);
       return;
     }
     if (Notification.permission === "granted") {
@@ -257,6 +338,35 @@ function JoinPage() {
       return;
     }
     setPushBtn(true);
+  }
+
+  // Ana ekrandaki uygulama Safari'den ayrı depolama ve çerez kullanır; ana ekrana eklerken o anki adres kaydedilir.
+  // l: tek kullanımlık cihaz bağlama kodu (uygulama Safari'deki cihaz sayılır, sonraki biletlere de bildirim gider),
+  // k: bu bilet (kod alınamazsa / eski yöntem)
+  async function startInstall() {
+    const id = localStorage.getItem(slot);
+    const { code } = await api<{ code: string }>("/api/v/link", {}).catch(() => ({ code: "" }));
+    history.replaceState(null, "", `?${[ref && `r=${ref}`, id && `k=${id}`, code && `l=${code}`].filter(Boolean).join("&")}`);
+    setGuide(true);
+  }
+
+  async function install() {
+    installEvt?.prompt();
+    await installEvt?.userChoice;
+    installEvt = null;
+    setCanInstall(false);
+  }
+
+  // Ana ekran uygulaması: cihazın bitmemiş biletine geçer (Safari'de alınan ya da bildirime dokunulan sıra).
+  // Sonuç: başka sıraya yönlendirildiyse true
+  async function openActive() {
+    if (!standalone) return false;
+    const list = await api<{ room: string; id: string }[]>("/api/v/tickets", {}).catch(() => []);
+    const here = list.find((t) => t.room === room), last = list[list.length - 1];
+    if (here) { localStorage.setItem(slot, here.id); return false; }
+    if (!last || localStorage.getItem(slot)) return false;
+    location.replace(`/join?r=${last.room}`);
+    return true;
   }
 
   async function refresh() {
@@ -274,6 +384,7 @@ function JoinPage() {
     setErr("");
     if (s.status === "gone" || s.status === "expired") {
       localStorage.removeItem(slot);
+      openActive(); // uygulamada başka sırada bilet varsa ona geçer
       setMe(undefined);
       setView(null);
       setErr(s.status === "expired" ? T.expired : T.gone);
@@ -289,11 +400,26 @@ function JoinPage() {
   }
 
   useEffect(() => {
-    api<{ room: string }>(`/api/resolve?r=${encodeURIComponent(ref)}`).then((r) => {
+    const onInstallable = () => setCanInstall(true);
+    addEventListener("installable", onInstallable);
+    return () => removeEventListener("installable", onInstallable);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      // Ana ekran uygulamasının ilk açılışı: Safari'deki cihaz kimliği çereze yazılır (kod tek kullanımlık)
+      const code = q.get("l");
+      if (standalone && code && !localStorage.getItem("linked")) {
+        await api("/api/v/redeem", { code }).catch(() => {});
+        localStorage.setItem("linked", "1");
+      }
+      return api<{ room: string }>(`/api/resolve?r=${encodeURIComponent(ref)}`);
+    })().then(async (r) => {
       room = r.room;
       slot = "ticket:" + room;
-      // iOS ana ekran uygulaması ilk açılışta bileti adresten alır (bkz. pushUI)
+      // iOS ana ekran uygulaması ilk açılışta bileti adresten alır (bkz. startInstall)
       if (q.get("k") && !localStorage.getItem(slot)) localStorage.setItem(slot, q.get("k")!);
+      if (await openActive()) return;
       api<Status>(`/api/r/${room}/status`).then((s) => {
         setSt(s);
         setSize((n) => Math.min(n, s.maxGroup));
@@ -427,6 +553,8 @@ function JoinPage() {
                   )}
                 </p>
                 <p className="text-sm text-muted-foreground">{hint}</p>
+                {iosBtn && <Button onClick={startInstall}>{T.notifyMe}</Button>}
+                {canInstall && !standalone && <Button variant="secondary" onClick={install}>{T.install}</Button>}
                 {pushBtn && (
                   <Button variant="secondary" onClick={async () => {
                     await Notification.requestPermission();
@@ -443,6 +571,7 @@ function JoinPage() {
       )}
 
       <ErrorText>{err}</ErrorText>
+      <InstallGuide open={guide} onClose={() => setGuide(false)} />
       {/* Sırada bekleyen her ziyaretçi olası bir işletme; utm ile Analytics'te hangi sayfadan geldiği görünür */}
       <p className="mt-6 text-center text-sm"><a className="font-medium underline" href={siteUrl("/?utm_source=qrwait&utm_medium=join")}>{T.ownQueue}</a></p>
       <p className="mt-2 text-center text-xs text-muted-foreground"><a className="underline" href={siteUrl("/privacy")}>{LEGAL.privacyShort}</a></p>

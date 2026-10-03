@@ -144,6 +144,34 @@ vs.w.send(JSON.stringify({ vis: true }));
 await pause(300);
 assert.ok((await seenOf()) > hidAt, "ekrana dönünce yeniden görülür");
 vs.w.close(); hs.w.close();
+
+// Cihaz çerezi ve ana ekran uygulaması: uygulama tek kullanımlık kodla Safari'deki cihaz kimliğini alır,
+// uygulamada verilen bildirim izni sonraki sıralardaki biletlere kendiliğinden bağlanır
+{
+  const x = await post("/api/admin/rooms", { name: "X", slug: `${slug}-x`, radius: 300, ...spot }, PW);
+  const y = await post("/api/admin/rooms", { name: "Y", slug: `${slug}-y`, radius: 300, ...spot }, PW);
+  const tok = async (r) => (await post(`/api/r/${r.room}/admin`, {}, { "x-key": r.key })).token;
+  const raw = (p, body, h = {}) => globalThis.fetch(B + p, { method: "POST", headers: { "content-type": "application/json", ...h }, body: JSON.stringify(body) });
+  const j1 = await raw(`/api/r/${x.room}/join`, { t: await tok(x), ...spot, size: 1, device: `device-cookie-${Date.now()}` });
+  const d = j1.headers.get("set-cookie")?.match(/d=([\w-]+)/)?.[1];
+  assert.match(d ?? "", /^device-cookie-\d+$/, "eski sayfanın cihaz kimliği çereze yazılır");
+  const jar = { cookie: `d=${d}` }, t1 = await j1.json();
+  const { code } = await post("/api/v/link", {}, jar);
+  assert.match((await raw("/api/v/redeem", { code })).headers.get("set-cookie") ?? "", new RegExp(`d=${d};.*HttpOnly`), "uygulama Safari'deki cihazı alır");
+  assert.deepEqual(await post("/api/v/redeem", { code }), { ok: false }, "kod tek kullanımlık");
+  assert.ok((await post("/api/v/link", {})).error, "çerezsiz kod alınamaz");
+  assert.deepEqual(await post(`/api/r/${x.room}/push`, { id: t1.id, sub }, jar), { ok: true });
+  // Önde 3 grup: "sıranız yaklaşıyor" bildirimi hemen gitmesin (sahte abonelik gönderimde geçersiz sayılıp silinir)
+  const ty = await tok(y);
+  for (const n of [1, 2, 3]) await post(`/api/r/${y.room}/join`, { t: ty, ...spot, size: 1, device: `device-ahead-00000${n}` });
+  const t2 = await (await raw(`/api/r/${y.room}/join`, { t: ty, ...spot, size: 1 }, jar)).json();
+  assert.equal((await post(`/api/r/${y.room}/admin`, {}, { "x-key": y.key })).entries.find((e) => e.id === t2.id).notify, true, "başka sıradaki yeni bilette bildirim kendiliğinden açık");
+  assert.deepEqual((await post("/api/v/tickets", {}, jar)).map((t) => t.id), [t1.id, t2.id], "uygulama aktif biletleri görür");
+  await post(`/api/r/${x.room}/leave`, { id: t1.id });
+  assert.deepEqual((await post("/api/v/tickets", {}, jar)).map((t) => t.room), [y.room], "biten bilet listeden çıkar");
+  assert.deepEqual(await post("/api/v/tickets", {}), [], "çerezsiz liste boş");
+  for (const r of [x, y]) await req("DELETE", `/api/admin/rooms/${r.room}`, undefined, PW);
+}
 assert.equal(s.error, undefined, "push gönderimi çağırmayı bozmaz");
 assert.equal((await me(a.id)).status, "called");
 assert.equal((await me(b.id)).status, "waiting");
