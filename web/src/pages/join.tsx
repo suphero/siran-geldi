@@ -507,7 +507,12 @@ function JoinPage() {
       room = r.room;
       slot = "ticket:" + room;
       // iOS ana ekran uygulaması ilk açılışta bileti adresten alır (bkz. startInstall)
-      if (q.get("k") && !localStorage.getItem(slot)) localStorage.setItem(slot, q.get("k")!);
+      // Uygulamanın başlangıç adresi ekleme anında sabitlenir: k her açılışta gelir, yalnızca bir kez alınır (biten bilet hata göstermesin)
+      const k = q.get("k");
+      if (k && localStorage.getItem("kUsed") !== k) {
+        localStorage.setItem("kUsed", k);
+        if (!localStorage.getItem(slot)) localStorage.setItem(slot, k);
+      }
       if (await openActive()) return;
       api<Status>(`/api/r/${room}/status`).then((s) => {
         setSt(s);
@@ -569,14 +574,16 @@ function JoinPage() {
     location.reload();
   }
 
-  const name = me?.name ?? st?.name;
+  // Ana ekran uygulamasında bilet yokken: kurulduğu sıranın değil, uygulamanın ana ekranı (QR okuyucu)
+  const home = standalone && ready && view === null;
+  const name = home ? null : me?.name ?? st?.name;
   const soon = me?.status === "waiting" && me.aheadGroups <= 2;
   const left = timed ? Math.max(0, Math.ceil((due.current! - Date.now()) / 1000)) : 0;
   const clock = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
 
   return (
     <Page>
-      <Title className={cn(called && "text-success-foreground")}>{name ? `${st ? `${catIcon(st.category)} ` : ""}${name}` : T.queue}</Title>
+      <Title className={cn(called && "text-success-foreground")}>{home ? "QR Wait" : name ? `${st ? `${catIcon(st.category)} ` : ""}${name}` : T.queue}</Title>
 
       {view === "join" && (
         <Card>
@@ -660,8 +667,8 @@ function JoinPage() {
         </Card>
       )}
 
-      <ErrorText>{err}</ErrorText>
-      {standalone && ready && view === null && (
+      <ErrorText>{home && err === T.notFound ? "" : err}</ErrorText>
+      {home && (
         <Card>
           <CardContent className="flex flex-col gap-3 text-base">
             <p>{T.scanHint}</p>
